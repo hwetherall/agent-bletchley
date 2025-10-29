@@ -23,7 +23,7 @@ class Settings:
     
     # OpenRouter Configuration
     OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    TONGYI_MODEL: str = os.getenv("TONGYI_MODEL", "deepseek/deepseek-r1:free")
+    TONGYI_MODEL: str = os.getenv("TONGYI_MODEL", "alibaba/tongyi-deepresearch-30b-a3b")
     
     # Server Configuration
     BACKEND_HOST: str = os.getenv("BACKEND_HOST", "0.0.0.0")

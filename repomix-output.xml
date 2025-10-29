@@ -1,0 +1,2071 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.gitignore
+backend/.env.example
+backend/app/__init__.py
+backend/app/api/__init__.py
+backend/app/api/routes.py
+backend/app/api/websocket.py
+backend/app/config.py
+backend/app/main.py
+backend/app/models/__init__.py
+backend/app/models/research_job.py
+backend/app/orchestrator/__init__.py
+backend/app/orchestrator/research_engine.py
+backend/app/orchestrator/tongyi_client.py
+backend/app/tools/__init__.py
+backend/app/tools/tool_registry.py
+backend/app/tools/web_fetch.py
+backend/app/tools/web_search.py
+backend/README.md
+backend/requirements.txt
+backend/start.ps1
+frontend/.env.local.example
+frontend/app/api/research/route.ts
+frontend/app/globals.css
+frontend/app/layout.tsx
+frontend/app/page.tsx
+frontend/app/research/[jobId]/page.tsx
+frontend/components/IterationCard.tsx
+frontend/components/OutputViewer.tsx
+frontend/components/ProgressBar.tsx
+frontend/components/SourcePanel.tsx
+frontend/next-env.d.ts
+frontend/next.config.js
+frontend/package.json
+frontend/postcss.config.js
+frontend/README.md
+frontend/tailwind.config.ts
+frontend/tsconfig.json
+frontend/types/research.ts
+QUICKSTART.md
+README.md
+supabase/migrations/001_initial_schema.sql
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".gitignore">
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+env/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.next/
+out/
+build/
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Supabase
+.supabase/
+
+# Misc
+*.tmp
+*.bak
+.cache/
+</file>
+
+<file path="backend/.env.example">
+# OpenRouter API Configuration
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+TONGYI_MODEL=deepseek/deepseek-r1:free
+
+# Brave Search API
+BRAVE_SEARCH_API_KEY=your_brave_search_api_key_here
+
+# Jina Reader API
+JINA_READER_API_KEY=your_jina_reader_api_key_here
+
+# Supabase Configuration
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_anon_key
+
+# Server Configuration
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:3000
+
+# Logging
+LOG_LEVEL=INFO
+</file>
+
+<file path="backend/app/__init__.py">
+"""
+Agent Bletchley Backend Application
+"""
+</file>
+
+<file path="backend/app/api/__init__.py">
+"""
+API routes module.
+"""
+</file>
+
+<file path="backend/app/api/routes.py">
+"""
+REST API routes for research jobs.
+"""
+import logging
+import uuid
+from typing import List
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from app.models.research_job import ResearchJob, ResearchJobCreate, ResearchJobStatus
+from app.orchestrator.research_engine import ResearchEngine
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/research", tags=["research"])
+research_engine = ResearchEngine()
+
+
+@router.post("/jobs", response_model=ResearchJob)
+async def create_research_job(
+    job_data: ResearchJobCreate,
+    background_tasks: BackgroundTasks
+) -> ResearchJob:
+    """
+    Create a new research job.
+    
+    Args:
+        job_data: Research job creation data
+        background_tasks: FastAPI background tasks
+        
+    Returns:
+        Created research job
+    """
+    # TODO: Validate job data
+    # TODO: Store job in database
+    # TODO: Start research process in background
+    
+    job_id = str(uuid.uuid4())
+    logger.info(f"Creating research job {job_id} with query: {job_data.query}")
+    
+    job = ResearchJob(
+        id=job_id,
+        query=job_data.query,
+        status=ResearchJobStatus.PENDING,
+    )
+    
+    # TODO: Start research in background
+    # background_tasks.add_task(research_engine.start_research, job_data.query, job_id)
+    
+    return job
+
+
+@router.get("/jobs/{job_id}", response_model=ResearchJob)
+async def get_research_job(job_id: str) -> ResearchJob:
+    """
+    Get a research job by ID.
+    
+    Args:
+        job_id: Research job ID
+        
+    Returns:
+        Research job
+    """
+    # TODO: Fetch job from database
+    
+    raise HTTPException(status_code=404, detail="Job not found")
+
+
+@router.get("/jobs", response_model=List[ResearchJob])
+async def list_research_jobs(
+    skip: int = 0,
+    limit: int = 100
+) -> List[ResearchJob]:
+    """
+    List all research jobs.
+    
+    Args:
+        skip: Number of jobs to skip
+        limit: Maximum number of jobs to return
+        
+    Returns:
+        List of research jobs
+    """
+    # TODO: Fetch jobs from database with pagination
+    
+    return []
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_research_job(job_id: str) -> dict:
+    """
+    Delete a research job.
+    
+    Args:
+        job_id: Research job ID
+        
+    Returns:
+        Success message
+    """
+    # TODO: Delete job from database
+    
+    return {"message": "Job deleted"}
+</file>
+
+<file path="backend/app/api/websocket.py">
+"""
+WebSocket handler for real-time research updates.
+"""
+import logging
+import json
+from typing import Set
+from fastapi import WebSocket, WebSocketDisconnect
+from app.orchestrator.research_engine import ResearchEngine
+
+logger = logging.getLogger(__name__)
+
+
+class ConnectionManager:
+    """Manages WebSocket connections for real-time updates."""
+    
+    def __init__(self):
+        """Initialize the connection manager."""
+        self.active_connections: Set[WebSocket] = set()
+        self.research_engine = ResearchEngine()
+    
+    async def connect(self, websocket: WebSocket) -> None:
+        """Accept a new WebSocket connection."""
+        await websocket.accept()
+        self.active_connections.add(websocket)
+        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket) -> None:
+        """Remove a WebSocket connection."""
+        self.active_connections.discard(websocket)
+        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+    
+    async def send_personal_message(self, message: dict, websocket: WebSocket) -> None:
+        """Send a message to a specific WebSocket connection."""
+        try:
+            await websocket.send_json(message)
+        except Exception as e:
+            logger.error(f"Error sending WebSocket message: {e}")
+    
+    async def broadcast(self, message: dict) -> None:
+        """Broadcast a message to all connected WebSocket clients."""
+        disconnected = set()
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to WebSocket: {e}")
+                disconnected.add(connection)
+        
+        # Remove disconnected connections
+        for connection in disconnected:
+            self.active_connections.discard(connection)
+
+
+manager = ConnectionManager()
+
+
+async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
+    """
+    WebSocket endpoint for real-time research job updates.
+    
+    Args:
+        websocket: WebSocket connection
+        job_id: Research job ID to subscribe to
+    """
+    await manager.connect(websocket)
+    
+    try:
+        # TODO: Subscribe to job updates
+        # TODO: Send initial job state
+        # TODO: Listen for updates and forward to client
+        
+        while True:
+            # Keep connection alive and listen for messages
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            # TODO: Handle client messages (pause, cancel, etc.)
+            logger.info(f"Received WebSocket message for job {job_id}: {message}")
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info(f"WebSocket disconnected for job {job_id}")
+</file>
+
+<file path="backend/app/config.py">
+"""
+Configuration management using environment variables.
+"""
+import os
+from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+class Settings:
+    """Application settings loaded from environment variables."""
+    
+    # API Keys
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    BRAVE_SEARCH_API_KEY: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    JINA_READER_API_KEY: str = os.getenv("JINA_READER_API_KEY", "")
+    
+    # Supabase
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
+    
+    # OpenRouter Configuration
+    OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    TONGYI_MODEL: str = os.getenv("TONGYI_MODEL", "alibaba/tongyi-deepresearch-30b-a3b")
+    
+    # Server Configuration
+    BACKEND_HOST: str = os.getenv("BACKEND_HOST", "0.0.0.0")
+    BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
+    
+    # CORS
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    
+    # Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    
+    @classmethod
+    def validate(cls) -> None:
+        """Validate that required environment variables are set."""
+        required_vars = [
+            "OPENROUTER_API_KEY",
+            "BRAVE_SEARCH_API_KEY",
+            "JINA_READER_API_KEY",
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+        ]
+        missing = [var for var in required_vars if not getattr(cls, var)]
+        if missing:
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+
+# Global settings instance
+settings = Settings()
+</file>
+
+<file path="backend/app/main.py">
+"""
+FastAPI application entry point.
+"""
+import logging
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
+from app.api import routes
+from app.api.websocket import websocket_endpoint
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app
+app = FastAPI(
+    title="Agent Bletchley API",
+    description="Agentic web research system for investment due diligence",
+    version="1.0.0",
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(routes.router)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    """Root endpoint returning greeting."""
+    return {"message": "Hello Agent Bletchley"}
+
+
+@app.get("/health")
+async def health_check() -> dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "healthy"}
+
+
+@app.websocket("/ws/research/{job_id}")
+async def websocket_route(websocket: WebSocket, job_id: str) -> None:
+    """WebSocket endpoint for real-time research updates."""
+    await websocket_endpoint(websocket, job_id)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.BACKEND_HOST,
+        port=settings.BACKEND_PORT,
+        reload=True,
+    )
+</file>
+
+<file path="backend/app/models/__init__.py">
+"""
+Data models module.
+"""
+</file>
+
+<file path="backend/app/models/research_job.py">
+"""
+Pydantic models for research jobs.
+"""
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from enum import Enum
+from pydantic import BaseModel, Field
+
+
+class ResearchJobStatus(str, Enum):
+    """Research job status enumeration."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ResearchJobCreate(BaseModel):
+    """Model for creating a new research job."""
+    query: str = Field(..., description="The research query or question")
+    context: Optional[Dict[str, Any]] = Field(None, description="Optional context for the research")
+
+
+class ResearchJob(BaseModel):
+    """Model representing a research job."""
+    id: str = Field(..., description="Unique job identifier")
+    query: str = Field(..., description="The research query")
+    status: ResearchJobStatus = Field(..., description="Current job status")
+    progress: float = Field(0.0, ge=0.0, le=100.0, description="Progress percentage")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Job creation timestamp")
+    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
+    sources: List[Dict[str, Any]] = Field(default_factory=list, description="Gathered sources")
+    iterations: List[Dict[str, Any]] = Field(default_factory=list, description="Research iterations")
+    report: Optional[str] = Field(None, description="Final research report")
+    error: Optional[str] = Field(None, description="Error message if job failed")
+    
+    class Config:
+        """Pydantic config."""
+        use_enum_values = True
+</file>
+
+<file path="backend/app/orchestrator/__init__.py">
+"""
+Research orchestrator module.
+"""
+</file>
+
+<file path="backend/app/orchestrator/research_engine.py">
+"""
+Main research engine that orchestrates the research process.
+"""
+import logging
+from typing import Dict, List, Any, Optional
+from app.models.research_job import ResearchJob, ResearchJobStatus
+from app.orchestrator.tongyi_client import TongyiClient
+from app.tools.tool_registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
+
+
+class ResearchEngine:
+    """
+    Main research engine that coordinates AI agent research activities.
+    
+    TODO: Implement the main research loop that:
+    1. Receives research query
+    2. Uses Tongyi DeepResearch agent to plan research steps
+    3. Executes tools (web search, web fetch) based on agent decisions
+    4. Aggregates and synthesizes results
+    5. Returns comprehensive research report
+    """
+    
+    def __init__(self):
+        """Initialize the research engine."""
+        self.tongyi_client = TongyiClient()
+        self.tool_registry = ToolRegistry()
+    
+    async def start_research(self, query: str, job_id: str) -> ResearchJob:
+        """
+        Start a new research job.
+        
+        Args:
+            query: The research query/question
+            job_id: Unique identifier for this research job
+            
+        Returns:
+            ResearchJob instance with initial status
+        """
+        # TODO: Create initial research job in database
+        # TODO: Initialize research context and state
+        # TODO: Begin research loop
+        
+        logger.info(f"Starting research job {job_id} with query: {query}")
+        
+        job = ResearchJob(
+            id=job_id,
+            query=query,
+            status=ResearchJobStatus.PENDING,
+        )
+        
+        return job
+    
+    async def execute_research_step(
+        self,
+        job_id: str,
+        step: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute a single research step.
+        
+        Args:
+            job_id: The research job ID
+            step: Step definition from AI agent
+            
+        Returns:
+            Step execution results
+        """
+        # TODO: Parse step instruction from agent
+        # TODO: Select appropriate tool(s) from registry
+        # TODO: Execute tool with parameters
+        # TODO: Return results to agent for next step
+        
+        logger.info(f"Executing research step for job {job_id}")
+        return {"status": "pending_implementation"}
+    
+    async def synthesize_results(
+        self,
+        job_id: str,
+        sources: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Synthesize research results into final report.
+        
+        Args:
+            job_id: The research job ID
+            sources: List of gathered sources and findings
+            
+        Returns:
+            Final research report as formatted text
+        """
+        # TODO: Use Tongyi agent to synthesize all gathered information
+        # TODO: Structure findings into organized report
+        # TODO: Include source citations
+        # TODO: Save final report to database
+        
+        logger.info(f"Synthesizing results for job {job_id}")
+        return "Research synthesis pending implementation"
+    
+    async def update_job_status(
+        self,
+        job_id: str,
+        status: ResearchJobStatus,
+        progress: Optional[float] = None
+    ) -> None:
+        """
+        Update research job status.
+        
+        Args:
+            job_id: The research job ID
+            status: New status
+            progress: Optional progress percentage (0-100)
+        """
+        # TODO: Update job status in database
+        # TODO: Emit WebSocket event for real-time updates
+        
+        logger.info(f"Updating job {job_id} status to {status}")
+</file>
+
+<file path="backend/app/orchestrator/tongyi_client.py">
+"""
+OpenRouter/Tongyi DeepResearch client interface.
+"""
+import logging
+import httpx
+from typing import Dict, List, Any, Optional
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class TongyiClient:
+    """
+    Client for interacting with OpenRouter API for Tongyi DeepResearch.
+    
+    TODO: Implement full integration with OpenRouter API:
+    1. Chat completions with tool calling support
+    2. Streaming responses for real-time updates
+    3. Tool definitions from ToolRegistry
+    4. Error handling and retries
+    """
+    
+    def __init__(self):
+        """Initialize the Tongyi client."""
+        self.api_key = settings.OPENROUTER_API_KEY
+        self.base_url = settings.OPENROUTER_BASE_URL
+        self.model = settings.TONGYI_MODEL
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "HTTP-Referer": "https://github.com/agent-bletchley",
+                "X-Title": "Agent Bletchley",
+            },
+            timeout=60.0,
+        )
+    
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        stream: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Send chat completion request to OpenRouter.
+        
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            tools: Optional list of tool definitions for function calling
+            stream: Whether to stream the response
+            
+        Returns:
+            API response dictionary
+        """
+        # TODO: Implement chat completion with tool calling
+        # TODO: Handle streaming responses if stream=True
+        # TODO: Parse tool calls from response
+        # TODO: Implement retry logic for failed requests
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+        }
+        
+        if tools:
+            payload["tools"] = tools
+        
+        if stream:
+            payload["stream"] = True
+        
+        logger.info(f"Sending chat completion request to {self.model}")
+        
+        try:
+            response = await self.client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"OpenRouter API error: {e}")
+            raise
+    
+    async def send_research_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Send a research query to the Tongyi agent.
+        
+        Args:
+            query: The research question/query
+            context: Optional context from previous research steps
+            
+        Returns:
+            Agent response with potential tool calls
+        """
+        # TODO: Format research query with context
+        # TODO: Include available tools from ToolRegistry
+        # TODO: Parse agent response for tool calls or final answer
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a research assistant for investment due diligence. Use available tools to gather comprehensive information."
+            },
+            {
+                "role": "user",
+                "content": query
+            }
+        ]
+        
+        tools = []  # TODO: Get tools from ToolRegistry
+        
+        return await self.chat_completion(messages=messages, tools=tools)
+    
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self.client.aclose()
+</file>
+
+<file path="backend/app/tools/__init__.py">
+"""
+Research tools module.
+"""
+</file>
+
+<file path="backend/app/tools/tool_registry.py">
+"""
+Tool registry for defining available tools for the AI agent.
+"""
+from typing import List, Dict, Any
+from app.tools.web_search import WebSearchTool
+from app.tools.web_fetch import WebFetchTool
+
+
+class ToolRegistry:
+    """
+    Registry of available tools for the research agent.
+    
+    Defines tool schemas compatible with OpenRouter function calling.
+    """
+    
+    def __init__(self):
+        """Initialize the tool registry."""
+        self.web_search = WebSearchTool()
+        self.web_fetch = WebFetchTool()
+    
+    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+        """
+        Get tool definitions in OpenRouter function calling format.
+        
+        Returns:
+            List of tool definition dictionaries
+        """
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web for information using Brave Search. Use this to find relevant sources and articles about a topic.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The search query string"
+                            },
+                            "count": {
+                                "type": "integer",
+                                "description": "Number of results to return (default: 10, max: 20)",
+                                "default": 10
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_fetch",
+                    "description": "Fetch and parse content from a web URL. Use this to get the full text content of articles or web pages found through search.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL to fetch and parse"
+                            },
+                            "mode": {
+                                "type": "string",
+                                "description": "Reader mode: 'reader' for parsed content, 'raw' for raw HTML",
+                                "enum": ["reader", "raw"],
+                                "default": "reader"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                }
+            }
+        ]
+    
+    async def execute_tool(
+        self,
+        tool_name: str,
+        parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute a tool by name with given parameters.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            parameters: Tool parameters
+            
+        Returns:
+            Tool execution result
+        """
+        if tool_name == "web_search":
+            query = parameters.get("query")
+            count = parameters.get("count", 10)
+            results = await self.web_search.search(query=query, count=count)
+            return {
+                "tool": "web_search",
+                "results": results
+            }
+        elif tool_name == "web_fetch":
+            url = parameters.get("url")
+            mode = parameters.get("mode", "reader")
+            content = await self.web_fetch.fetch(url=url, mode=mode)
+            return {
+                "tool": "web_fetch",
+                "content": content
+            }
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
+</file>
+
+<file path="backend/app/tools/web_fetch.py">
+"""
+Jina Reader API wrapper for fetching and parsing web content.
+"""
+import logging
+import httpx
+from typing import Dict, Any, Optional
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class WebFetchTool:
+    """
+    Tool for fetching and parsing web content using Jina Reader API.
+    
+    TODO: Implement full Jina Reader integration:
+    1. Fetch article/content from URL
+    2. Parse and extract main content
+    3. Handle different content types
+    4. Extract metadata (title, author, date, etc.)
+    """
+    
+    def __init__(self):
+        """Initialize the web fetch tool."""
+        self.api_key = settings.JINA_READER_API_KEY
+        self.base_url = "https://r.jina.ai"
+        self.client = httpx.AsyncClient(
+            headers={
+                "X-RapidAPI-Key": self.api_key,
+            },
+            timeout=60.0,
+        )
+    
+    async def fetch(
+        self,
+        url: str,
+        mode: str = "reader"
+    ) -> Dict[str, Any]:
+        """
+        Fetch and parse content from a URL.
+        
+        Args:
+            url: The URL to fetch
+            mode: Reader mode (reader, raw, etc.)
+            
+        Returns:
+            Dictionary with parsed content, title, metadata, etc.
+        """
+        # TODO: Implement actual Jina Reader API call
+        # TODO: Parse response and extract content
+        # TODO: Handle different modes and options
+        # TODO: Extract metadata fields
+        # TODO: Handle errors (404, timeout, etc.)
+        
+        logger.info(f"Fetching content from: {url}")
+        
+        headers = {
+            "X-RapidAPI-Key": self.api_key,
+        }
+        
+        if mode == "reader":
+            headers["X-Return-Format"] = "json"
+        
+        try:
+            response = await self.client.get(url, headers=headers)
+            response.raise_for_status()
+            
+            # TODO: Parse response based on format
+            if mode == "reader":
+                return response.json()
+            else:
+                return {
+                    "url": url,
+                    "content": response.text,
+                    "status_code": response.status_code,
+                }
+        except httpx.HTTPError as e:
+            logger.error(f"Jina Reader API error: {e}")
+            raise
+    
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self.client.aclose()
+</file>
+
+<file path="backend/app/tools/web_search.py">
+"""
+Brave Search API wrapper for web search functionality.
+"""
+import logging
+import httpx
+from typing import List, Dict, Any, Optional
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class WebSearchTool:
+    """
+    Tool for performing web searches using Brave Search API.
+    
+    TODO: Implement full Brave Search integration:
+    1. Search with query string
+    2. Parse and format search results
+    3. Handle pagination
+    4. Filter and rank results
+    """
+    
+    def __init__(self):
+        """Initialize the web search tool."""
+        self.api_key = settings.BRAVE_SEARCH_API_KEY
+        self.base_url = "https://api.search.brave.com/res/v1"
+        self.client = httpx.AsyncClient(
+            headers={
+                "X-Subscription-Token": self.api_key,
+            },
+            timeout=30.0,
+        )
+    
+    async def search(
+        self,
+        query: str,
+        count: int = 10,
+        offset: int = 0,
+        safesearch: str = "moderate"
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform a web search.
+        
+        Args:
+            query: Search query string
+            count: Number of results to return (max 20)
+            offset: Offset for pagination
+            safesearch: Safe search setting (off, moderate, strict)
+            
+        Returns:
+            List of search result dictionaries with title, url, snippet, etc.
+        """
+        # TODO: Implement actual Brave Search API call
+        # TODO: Parse response and extract relevant fields
+        # TODO: Format results consistently
+        # TODO: Handle API errors and rate limits
+        
+        logger.info(f"Searching for: {query}")
+        
+        params = {
+            "q": query,
+            "count": min(count, 20),
+            "offset": offset,
+            "safesearch": safesearch,
+        }
+        
+        try:
+            response = await self.client.get("/web/search", params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            # TODO: Parse and format results
+            results = data.get("web", {}).get("results", [])
+            return results
+        except httpx.HTTPError as e:
+            logger.error(f"Brave Search API error: {e}")
+            raise
+    
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self.client.aclose()
+</file>
+
+<file path="backend/README.md">
+# Agent Bletchley Backend
+
+FastAPI backend for the Agent Bletchley research system.
+
+## Setup
+
+### Prerequisites
+
+- Python 3.11 or higher
+- Virtual environment (recommended)
+
+### Installation
+
+**IMPORTANT: Run all commands from the `backend` directory!**
+
+1. Navigate to the backend directory:
+```powershell
+cd backend
+```
+
+2. Create a virtual environment (if it doesn't exist):
+```bash
+python -m venv venv
+```
+
+3. Activate the virtual environment:
+```powershell
+# On Windows PowerShell (from backend directory):
+.\venv\Scripts\Activate.ps1
+
+# If you get an execution policy error, run this first:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# On Windows Command Prompt:
+venv\Scripts\activate
+
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+4. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+5. Configure environment variables:
+```bash
+# On Windows PowerShell:
+Copy-Item .env.example .env
+
+# On macOS/Linux:
+cp .env.example .env
+
+# Edit .env with your API keys and configuration
+```
+
+### Required Environment Variables
+
+- `OPENROUTER_API_KEY` - Your OpenRouter API key
+- `BRAVE_SEARCH_API_KEY` - Your Brave Search API key
+- `JINA_READER_API_KEY` - Your Jina Reader API key
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_KEY` - Your Supabase anon key
+
+### Running the Server
+
+Development server with auto-reload:
+```bash
+uvicorn app.main:app --reload
+```
+
+Production server:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`
+
+### API Documentation
+
+Once the server is running, visit:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+### Project Structure
+
+```
+backend/
+├── app/
+│   ├── main.py              # FastAPI application entry point
+│   ├── config.py            # Configuration management
+│   ├── orchestrator/         # Research orchestration logic
+│   ├── tools/                # External API integrations
+│   ├── api/                  # REST API routes
+│   └── models/               # Pydantic data models
+├── requirements.txt          # Python dependencies
+└── README.md                 # This file
+```
+
+### Development
+
+The codebase uses:
+- Async/await patterns throughout
+- Type hints on all functions
+- TODO comments marking areas for implementation
+- Proper logging configuration
+</file>
+
+<file path="backend/requirements.txt">
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+httpx==0.27.2
+python-dotenv==1.0.1
+pydantic==2.9.2
+websockets==13.1
+supabase==2.8.0
+</file>
+
+<file path="backend/start.ps1">
+# PowerShell script to start the backend development server
+# Run this script from the backend directory: .\start.ps1
+
+Write-Host "Agent Bletchley Backend - Starting..." -ForegroundColor Cyan
+
+# Change to backend directory if not already there
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $scriptPath
+
+# Check if venv exists
+if (-not (Test-Path "venv")) {
+    Write-Host "Creating virtual environment..." -ForegroundColor Yellow
+    python -m venv venv
+}
+
+# Activate virtual environment
+Write-Host "Activating virtual environment..." -ForegroundColor Yellow
+& "$scriptPath\venv\Scripts\Activate.ps1"
+
+# Check if .env exists
+if (-not (Test-Path ".env")) {
+    Write-Host "Creating .env file from .env.example..." -ForegroundColor Yellow
+    Copy-Item .env.example .env
+    Write-Host "Please edit .env file with your API keys!" -ForegroundColor Red
+}
+
+# Install/upgrade dependencies
+Write-Host "Installing dependencies..." -ForegroundColor Yellow
+pip install -r requirements.txt
+
+# Run the server
+Write-Host "Starting FastAPI server..." -ForegroundColor Green
+uvicorn app.main:app --reload
+</file>
+
+<file path="frontend/.env.local.example">
+# Backend API URL
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+
+# WebSocket URL
+NEXT_PUBLIC_WS_URL=ws://localhost:8000
+
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+</file>
+
+<file path="frontend/app/api/research/route.ts">
+/**
+ * API route for proxying requests to the backend.
+ */
+import { NextRequest, NextResponse } from "next/server";
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+export async function GET(request: NextRequest) {
+  try {
+    // TODO: Implement GET request to backend
+    const response = await fetch(`${BACKEND_URL}/api/research/jobs`);
+    
+    if (!response.ok) {
+      throw new Error(`Backend API error: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("API route error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch research jobs" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    
+    // TODO: Implement POST request to backend
+    const response = await fetch(`${BACKEND_URL}/api/research/jobs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Backend API error: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("API route error:", error);
+    return NextResponse.json(
+      { error: "Failed to create research job" },
+      { status: 500 }
+    );
+  }
+}
+</file>
+
+<file path="frontend/app/globals.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+</file>
+
+<file path="frontend/app/layout.tsx">
+/**
+ * Root layout component with dark mode support.
+ */
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Agent Bletchley",
+  description: "Agentic web research system for investment due diligence",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} antialiased`}>{children}</body>
+    </html>
+  );
+}
+</file>
+
+<file path="frontend/app/page.tsx">
+/**
+ * Home page displaying greeting.
+ */
+"use client";
+
+import React from "react";
+
+export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          Hello Agent Bletchley
+        </h1>
+        <p className="text-lg text-gray-600 dark:text-gray-400">
+          Agentic web research system for investment due diligence
+        </p>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="frontend/app/research/[jobId]/page.tsx">
+/**
+ * Research dashboard page for viewing a specific research job.
+ */
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import type { ResearchJob } from "@/types/research";
+import ProgressBar from "@/components/ProgressBar";
+import IterationCard from "@/components/IterationCard";
+import SourcePanel from "@/components/SourcePanel";
+import OutputViewer from "@/components/OutputViewer";
+import { useWebSocket } from "@/lib/websocket";
+
+export default function ResearchJobPage() {
+  const params = useParams();
+  const jobId = params.jobId as string;
+  const [job, setJob] = useState<ResearchJob | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // TODO: Fetch job data from API
+  useEffect(() => {
+    // TODO: Implement API call to fetch job
+    setLoading(false);
+  }, [jobId]);
+
+  // WebSocket connection for real-time updates
+  const { isConnected, lastMessage } = useWebSocket({
+    jobId,
+    onMessage: (message) => {
+      // TODO: Update job state based on WebSocket messages
+      console.log("WebSocket message:", message);
+    },
+  });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!job) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-500 dark:text-gray-400">Job not found</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          Research: {job.query}
+        </h1>
+        <div className="flex items-center gap-4">
+          <span
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              isConnected
+                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                : "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+            }`}
+          >
+            {isConnected ? "Connected" : "Disconnected"}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <ProgressBar progress={job.progress} status={job.status} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Research Iterations
+          </h2>
+          <div className="space-y-3">
+            {job.iterations.map((iteration) => (
+              <IterationCard key={iteration.id} iteration={iteration} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Sources
+          </h2>
+          <SourcePanel sources={job.sources} />
+        </div>
+      </div>
+
+      {job.report && (
+        <div className="mt-6">
+          <OutputViewer report={job.report} />
+        </div>
+      )}
+
+      {job.error && (
+        <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-red-800 dark:text-red-200">{job.error}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="frontend/components/IterationCard.tsx">
+/**
+ * Component for displaying a research iteration.
+ */
+import React from "react";
+import type { ResearchIteration } from "@/types/research";
+
+interface IterationCardProps {
+  iteration: ResearchIteration;
+}
+
+export default function IterationCard({ iteration }: IterationCardProps) {
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+          Step {iteration.step}
+        </span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          {new Date(iteration.timestamp).toLocaleTimeString()}
+        </span>
+      </div>
+      <p className="text-sm text-gray-900 dark:text-gray-100">{iteration.action}</p>
+      {/* TODO: Display iteration results if available */}
+    </div>
+  );
+}
+</file>
+
+<file path="frontend/components/OutputViewer.tsx">
+/**
+ * Component for displaying the final research output.
+ */
+import React from "react";
+
+interface OutputViewerProps {
+  report: string;
+}
+
+export default function OutputViewer({ report }: OutputViewerProps) {
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+        Research Report
+      </h3>
+      <div className="prose dark:prose-invert max-w-none">
+        <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+          {report}
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="frontend/components/ProgressBar.tsx">
+/**
+ * Animated progress bar component.
+ */
+"use client";
+
+import React from "react";
+import { motion } from "framer-motion";
+
+interface ProgressBarProps {
+  progress: number;
+  status?: string;
+}
+
+export default function ProgressBar({ progress, status }: ProgressBarProps) {
+  return (
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {status || "Progress"}
+        </span>
+        <span className="text-sm text-gray-500 dark:text-gray-400">{Math.round(progress)}%</span>
+      </div>
+      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+        <motion.div
+          className="h-full bg-blue-600 dark:bg-blue-500 rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+        />
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="frontend/components/SourcePanel.tsx">
+/**
+ * Component for displaying research sources.
+ */
+import React from "react";
+import type { Source } from "@/types/research";
+
+interface SourcePanelProps {
+  sources: Source[];
+}
+
+export default function SourcePanel({ sources }: SourcePanelProps) {
+  if (sources.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        No sources found yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {sources.map((source, index) => (
+        <div
+          key={index}
+          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:shadow-md transition-shadow"
+        >
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline block mb-1"
+          >
+            {source.title}
+          </a>
+          {source.snippet && (
+            <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
+              {source.snippet}
+            </p>
+          )}
+          {source.fetched_at && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+              Fetched: {new Date(source.fetched_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+</file>
+
+<file path="frontend/next-env.d.ts">
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+import "./.next/dev/types/routes.d.ts";
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+</file>
+
+<file path="frontend/next.config.js">
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  typescript: {
+    // TODO: Set to false once all TypeScript errors are resolved
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    // TODO: Set to false once all ESLint errors are resolved
+    ignoreDuringBuilds: false,
+  },
+};
+
+module.exports = nextConfig;
+</file>
+
+<file path="frontend/package.json">
+{
+  "name": "agent-bletchley-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^16.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.0",
+    "tailwindcss": "^3.4.0",
+    "framer-motion": "^11.0.0",
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.0.0"
+  }
+}
+</file>
+
+<file path="frontend/postcss.config.js">
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+</file>
+
+<file path="frontend/README.md">
+# Agent Bletchley Frontend
+
+Next.js 16 frontend application for the Agent Bletchley research system.
+
+## Setup
+
+### Prerequisites
+
+- Node.js 18 or higher
+- npm or yarn
+
+### Installation
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Configure environment variables:
+```bash
+cp .env.local.example .env.local
+# Edit .env.local with your configuration
+```
+
+### Required Environment Variables
+
+- `NEXT_PUBLIC_BACKEND_URL` - Backend API URL (default: http://localhost:8000)
+- `NEXT_PUBLIC_WS_URL` - WebSocket URL (default: ws://localhost:8000)
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
+
+### Running the Development Server
+
+```bash
+npm run dev
+```
+
+The frontend will be available at `http://localhost:3000`
+
+### Building for Production
+
+```bash
+npm run build
+npm start
+```
+
+### Project Structure
+
+```
+frontend/
+├── app/                    # Next.js App Router pages
+│   ├── layout.tsx         # Root layout
+│   ├── page.tsx           # Home page
+│   ├── research/          # Research dashboard pages
+│   └── api/               # API routes
+├── components/            # React components
+├── lib/                   # Utility libraries
+├── types/                 # TypeScript type definitions
+├── package.json           # Dependencies
+└── README.md              # This file
+```
+
+### Features
+
+- **Next.js 16 App Router** - Modern routing and server components
+- **TypeScript** - Type-safe development
+- **Tailwind CSS** - Utility-first CSS with dark mode support
+- **Framer Motion** - Animations and transitions
+- **Supabase** - Database integration
+- **WebSocket** - Real-time updates for research jobs
+
+### Development
+
+The codebase uses:
+- TypeScript strict mode
+- App Router (not Pages Router)
+- Tailwind CSS with dark mode
+- Proper error boundaries
+- TypeScript interfaces for all props
+</file>
+
+<file path="frontend/tailwind.config.ts">
+import type { Config } from "tailwindcss";
+
+const config: Config = {
+  content: [
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+      },
+    },
+  },
+  plugins: [],
+};
+export default config;
+</file>
+
+<file path="frontend/tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+</file>
+
+<file path="frontend/types/research.ts">
+/**
+ * TypeScript types for research jobs and related data structures.
+ */
+
+export enum ResearchJobStatus {
+  PENDING = "pending",
+  RUNNING = "running",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  CANCELLED = "cancelled",
+}
+
+export interface ResearchJobCreate {
+  query: string;
+  context?: Record<string, unknown>;
+}
+
+export interface ResearchJob {
+  id: string;
+  query: string;
+  status: ResearchJobStatus;
+  progress: number;
+  created_at: string;
+  updated_at?: string;
+  completed_at?: string;
+  sources: Source[];
+  iterations: ResearchIteration[];
+  report?: string;
+  error?: string;
+}
+
+export interface Source {
+  url: string;
+  title: string;
+  snippet?: string;
+  fetched_at?: string;
+  content?: string;
+}
+
+export interface ResearchIteration {
+  id: string;
+  step: number;
+  action: string;
+  timestamp: string;
+  results?: unknown;
+}
+
+export interface WebSocketMessage {
+  type: "status" | "progress" | "iteration" | "source" | "report" | "error";
+  job_id: string;
+  data: unknown;
+}
+</file>
+
+<file path="QUICKSTART.md">
+# Quick Start Guide - Windows PowerShell
+
+## Backend Setup (from project root)
+
+```powershell
+# 1. Navigate to backend directory
+cd backend
+
+# 2. Activate virtual environment
+.\venv\Scripts\Activate.ps1
+
+# If you get execution policy error, run this first:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 3. Install dependencies (if not already installed)
+pip install -r requirements.txt
+
+# 4. Create .env file (if not exists)
+Copy-Item .env.example .env
+# Then edit .env with your API keys
+
+# 5. Start the server
+uvicorn app.main:app --reload
+```
+
+## Alternative: Use the startup script
+
+From the `backend` directory:
+```powershell
+.\start.ps1
+```
+
+## Verify it's working
+
+Once the server starts, visit:
+- API: http://localhost:8000
+- Should return: `{"message": "Hello Agent Bletchley"}`
+- Docs: http://localhost:8000/docs
+
+## Troubleshooting
+
+**Problem**: `Activate.ps1` not found
+- **Solution**: Make sure you're in the `backend` directory, not the root
+
+**Problem**: Execution policy error
+- **Solution**: Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+
+**Problem**: `uvicorn` not found
+- **Solution**: Make sure venv is activated (you should see `(venv)` in your prompt)
+
+**Problem**: `requirements.txt` not found
+- **Solution**: Make sure you're in the `backend` directory
+</file>
+
+<file path="supabase/migrations/001_initial_schema.sql">
+-- Initial database schema for Agent Bletchley
+-- Run this migration in your Supabase SQL editor
+
+-- Research jobs table
+CREATE TABLE IF NOT EXISTS research_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    query TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    progress DECIMAL(5, 2) DEFAULT 0.0 CHECK (progress >= 0.0 AND progress <= 100.0),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    report TEXT,
+    error TEXT,
+    context JSONB DEFAULT '{}'::jsonb
+);
+
+-- Research iterations table
+CREATE TABLE IF NOT EXISTS research_iterations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL REFERENCES research_jobs(id) ON DELETE CASCADE,
+    step INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    results JSONB DEFAULT '{}'::jsonb,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT unique_job_step UNIQUE (job_id, step)
+);
+
+-- Research sources table
+CREATE TABLE IF NOT EXISTS research_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL REFERENCES research_jobs(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    title TEXT,
+    snippet TEXT,
+    content TEXT,
+    fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(job_id, url)
+);
+
+-- Indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_research_jobs_status ON research_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_research_jobs_created_at ON research_jobs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_research_iterations_job_id ON research_iterations(job_id);
+CREATE INDEX IF NOT EXISTS idx_research_sources_job_id ON research_sources(job_id);
+
+-- Function to automatically update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Trigger to update updated_at on research_jobs
+CREATE TRIGGER update_research_jobs_updated_at
+    BEFORE UPDATE ON research_jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE research_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE research_iterations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE research_sources ENABLE ROW LEVEL SECURITY;
+
+-- TODO: Create RLS policies based on your authentication requirements
+-- Example policy (adjust as needed):
+-- CREATE POLICY "Users can view their own research jobs"
+--     ON research_jobs FOR SELECT
+--     USING (auth.uid() = user_id);
+--
+-- CREATE POLICY "Users can create research jobs"
+--     ON research_jobs FOR INSERT
+--     WITH CHECK (true);
+--
+-- CREATE POLICY "Users can update their own research jobs"
+--     ON research_jobs FOR UPDATE
+--     USING (auth.uid() = user_id);
+</file>
+
+</files>
