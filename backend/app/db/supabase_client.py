@@ -242,6 +242,44 @@ async def add_source(
         raise
 
 
+async def get_sources_by_job(job_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all sources for a research job.
+    
+    Args:
+        job_id: The job ID
+        
+    Returns:
+        List of source dictionaries, or empty list on error
+    """
+    try:
+        client = get_client()
+        
+        response = await asyncio.to_thread(
+            lambda: client.table("research_sources")
+            .select("*")
+            .eq("job_id", job_id)
+            .order("fetched_at")
+            .execute()
+        )
+        
+        if response.data:
+            # Convert UUIDs to strings for consistency
+            sources = []
+            for source in response.data:
+                source["id"] = str(source["id"])
+                source["job_id"] = str(source["job_id"])
+                sources.append(source)
+            logger.info(f"Fetched {len(sources)} sources for job {job_id}")
+            return sources
+        else:
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error fetching sources for job {job_id}: {e}", exc_info=True)
+        return []
+
+
 async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     """
     Get a research job with related iterations and sources.

@@ -30,7 +30,12 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "web_search",
-                    "description": "Search the web for information using Brave Search. Use this to find relevant sources and articles about a topic.",
+                    "description": (
+                        "INVOKE THIS TOOL to search the web for information using Brave Search. "
+                        "You MUST call this function (not describe it) when you need to find sources. "
+                        "Returns search results with URLs, titles, and snippets. "
+                        "Use this FIRST to discover relevant articles and pages about a topic."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -52,7 +57,12 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "web_fetch",
-                    "description": "Fetch and parse content from a web URL. Use this to get the full text content of articles or web pages found through search.",
+                    "description": (
+                        "INVOKE THIS TOOL to fetch and parse content from a web URL. "
+                        "You MUST call this function (not describe it) when you need to read full article content. "
+                        "Returns the parsed text content, title, and metadata. "
+                        "Use this AFTER web_search to read articles and pages you found."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {

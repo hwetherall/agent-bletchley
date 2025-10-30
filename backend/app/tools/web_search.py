@@ -3,7 +3,7 @@ Brave Search API wrapper for web search functionality.
 """
 import logging
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class WebSearchTool:
     
     async def search(
         self,
-        query: str,
+        query: Union[str, List[str]],
         count: int = 10,
         offset: int = 0,
         safesearch: str = "moderate"
@@ -39,7 +39,7 @@ class WebSearchTool:
         Perform a web search.
         
         Args:
-            query: Search query string
+            query: Search query string or list of query strings (if list, uses first element)
             count: Number of results to return (max 20)
             offset: Offset for pagination
             safesearch: Safe search setting (off, moderate, strict)
@@ -48,6 +48,15 @@ class WebSearchTool:
             List of search result dictionaries with title, url, snippet.
             Returns empty list on error.
         """
+        # Handle array queries from Tongyi (convert to single string)
+        if isinstance(query, list):
+            if not query:
+                logger.warning("Empty query list provided")
+                return []
+            if len(query) > 1:
+                logger.warning(f"Tongyi sent multiple queries: {query}. Using first query: {query[0]}")
+            query = query[0]
+        
         # Validate input
         if not query or not query.strip():
             logger.warning("Empty search query provided")

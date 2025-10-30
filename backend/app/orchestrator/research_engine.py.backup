@@ -98,14 +98,7 @@ class ResearchEngine:
             connection_manager: Optional WebSocket connection manager
         """
         max_iterations = 20
-        MIN_ITERATIONS = 5  # Require at least 5 iterations before allowing final answer
         iteration_count = 0
-        
-        # Track research depth metrics
-        research_metrics = {
-            "search_queries": 0,
-            "sources_fetched": 0,
-        }
         
         try:
             # Update status to RUNNING in database (already done in start_research, but ensure it's set)
@@ -121,154 +114,31 @@ class ResearchEngine:
             tools = self.tool_registry.get_tool_definitions()
             
             system_prompt = (
-    "You are an expert research assistant conducting investment due diligence. "
-    "Your task is to gather comprehensive information using the available tools.\n\n"
-    
-    "🔧 CRITICAL: HOW TO USE TOOLS\n"
-    "You MUST use tools by making function calls in the following EXACT format:\n"
-    "- The system will provide tool definitions in the API request\n"
-    "- When you need information, you MUST invoke tools using tool_calls (NOT by describing them in text)\n"
-    "- Tool calls are JSON-structured function invocations that the system will execute automatically\n\n"
-    
-    "CORRECT behavior (tool call in proper field):\n"
-    "✓ Your response contains tool_calls field with function invocations\n"
-    "✓ The system executes your tools and returns results\n"
-    "✓ You receive the results and continue research\n\n"
-    
-    "INCORRECT behavior (describing tools in content):\n"
-    "✗ Writing 'I should search for...' or 'I will use web_search...' in your response\n"
-    "✗ Writing JSON-like tool structures in your text content\n"
-    "✗ Describing what tools to use instead of actually using them\n"
-    "✗ ANY text description of tools instead of actual function calls\n\n"
-    
-    "⚡ MANDATORY FIRST ACTION RULE\n"
-    "In your FIRST response to ANY research query, you MUST:\n"
-    "1. Make at least one web_search tool call to begin gathering information\n"
-    "2. Do NOT provide any analysis or conclusions without first gathering data\n"
-    "3. Do NOT write text about what you plan to search - just search\n\n"
-    
-    "Example FIRST response (CORRECT):\n"
-    "[System executes your web_search tool call and returns results]\n\n"
-    
-    "Example FIRST response (INCORRECT):\n"
-    "'I will search for information about X using these queries: ...'\n"
-    "This is WRONG - you must actually invoke the tool, not describe it!\n\n"
-    
-    "📋 AVAILABLE TOOLS\n\n"
-    "1. web_search(query: str or list[str])\n"
-    "   - Searches the web using Brave Search\n"
-    "   - Returns list of URLs, titles, and snippets\n"
-    "   - Use this FIRST to find relevant sources\n"
-    "   - Can pass single query string or list of query strings\n\n"
-    
-    "2. web_fetch(url: str)\n"
-    "   - Fetches full content from a specific URL\n"
-    "   - Use AFTER web_search to read important articles\n"
-    "   - Returns parsed text content from the page\n\n"
-    
-    "🎯 MINIMUM RESEARCH DEPTH REQUIREMENT\n\n"
-    f"You MUST conduct at least {MIN_ITERATIONS} research iterations before providing a final answer.\n"
-    "This ensures comprehensive, multi-angle exploration of the topic.\n\n"
-    
-    "Each iteration should involve:\n"
-    "- Making tool calls (web_search or web_fetch)\n"
-    "- Analyzing results\n"
-    "- Planning next exploration steps\n\n"
-    
-    f"Do NOT attempt to provide a final answer before completing at least {MIN_ITERATIONS} iterations.\n"
-    "If you try to stop early, the system will force you to continue researching.\n\n"
-    
-    "🔄 DEEP RESEARCH WORKFLOW (IterResearch-Inspired)\n\n"
-    "Iteration 1-2: Initial Exploration\n"
-    "- Make web_search call(s) to find initial sources covering broad aspects\n"
-    "- Use multiple distinct search queries to explore different angles:\n"
-    "  * Technical/scientific aspects\n"
-    "  * Market trends and commercial developments\n"
-    "  * Recent news and breakthroughs\n"
-    "  * Expert opinions and analysis\n"
-    "- Receive search results with URLs and snippets\n\n"
-    
-    "Iteration 3-4: Deepening Investigation\n"
-    "- Use web_fetch to read the most promising articles from search results\n"
-    "- Based on what you learn, make NEW web_search calls to explore:\n"
-    "  * Specific sub-topics that emerged\n"
-    "  * Contradictory viewpoints or competing solutions\n"
-    "  * Recent developments mentioned in sources\n"
-    "  * Related technologies or alternative approaches\n"
-    "- Continue fetching and analyzing sources\n\n"
-    
-    "Iteration 5+: Comprehensive Coverage\n"
-    "- Synthesize what you've learned so far\n"
-    "- Identify gaps in your knowledge\n"
-    "- Make targeted searches to fill those gaps\n"
-    "- Ensure you've explored multiple perspectives\n"
-    f"- Only after {MIN_ITERATIONS} iterations AND comprehensive coverage, provide final answer\n\n"
-    
-    "🔍 MULTI-ANGLE EXPLORATION REQUIREMENTS\n\n"
-    "For deep research, you MUST explore multiple angles:\n"
-    "1. Technical/Scientific: How does it work? What are the underlying principles?\n"
-    "2. Market/Commercial: What's the business landscape? Who are key players?\n"
-    "3. Recent Developments: What's new in 2024-2025? Latest breakthroughs?\n"
-    "4. Expert Analysis: What do industry experts say? Academic research?\n"
-    "5. Challenges/Risks: What are the limitations? What could go wrong?\n\n"
-    
-    "Use DISTINCT search queries for each angle. Don't repeat the same query.\n"
-    "Example: For 'renewable energy storage', explore:\n"
-    "- 'solid-state battery technology 2025'\n"
-    "- 'grid-scale energy storage market trends'\n"
-    "- 'flow battery commercialization updates'\n"
-    "- 'hydrogen storage cost reduction 2025'\n"
-    "- 'thermal energy storage innovations'\n\n"
-    
-    "📊 ITERATIVE DEEPENING STRATEGY\n\n"
-    "After each iteration, use what you learned to guide the next:\n"
-    "- If you find a technology mentioned, search specifically for that technology\n"
-    "- If you see a company name, search for that company's latest developments\n"
-    "- If sources mention a problem, search for solutions to that problem\n"
-    "- Build on previous findings rather than just collecting more general information\n\n"
-    
-    f"Final Iteration (after {MIN_ITERATIONS}+ iterations):\n"
-    "- Provide your final analysis ONLY when you have:\n"
-    f"  * Completed at least {MIN_ITERATIONS} research iterations\n"
-    "  * Explored multiple angles of the topic\n"
-    "  * Gathered sources from different perspectives\n"
-    "  * Fetched and analyzed key articles\n"
-    "- Your final response should contain NO tool calls (indicates research is complete)\n\n"
-    
-    "🎯 DECISION RULE: SHOULD I USE TOOLS NOW?\n\n"
-    "Ask yourself:\n"
-    f"1. Have I completed at least {MIN_ITERATIONS} iterations? (If NO → make tool calls)\n"
-    "2. Have I explored multiple angles (technical, market, recent, expert)? (If NO → make tool calls)\n"
-    "3. Have I used distinct search queries covering different aspects? (If NO → make tool calls)\n"
-    "4. Do I have enough information from diverse sources? (If NO → make tool calls)\n\n"
-    
-    "IF ANY answer is NO → Make tool calls to gather more information (web_search or web_fetch)\n"
-    "IF ALL answers are YES → Provide your final answer with NO tool calls\n\n"
-    
-    "Remember:\n"
-    "- Research queries ALWAYS need information gathering\n"
-    "- The first response ALWAYS needs tool usage\n"
-    f"- Minimum {MIN_ITERATIONS} iterations are REQUIRED before final answer\n"
-    "- Explore multiple angles with distinct search queries\n"
-    "- Build on previous findings to deepen investigation\n"
-    "- If you're not providing a final answer, you should be making tool calls\n"
-    "- NEVER describe tools in text - always invoke them\n\n"
-    
-    "🚨 WHAT HAPPENS IF YOU DESCRIBE TOOLS INSTEAD OF USING THEM\n\n"
-    "If you write text like 'I should search for...' or 'I will use web_search with arguments...', the system will:\n"
-    "- Detect this as an error\n"
-    "- Log a warning about incorrect behavior\n"
-    "- Your research will fail with 0 sources gathered\n"
-    "- You will need to be fixed with prompt engineering\n\n"
-    
-    "To avoid this: ALWAYS use proper tool calling format. NEVER describe tools in your response content.\n\n"
-    
-    "Now begin your research. Remember: Your FIRST action must be making web_search tool calls, "
-    f"and you must complete at least {MIN_ITERATIONS} iterations before providing a final answer!"
-)
-
-
-
+                "You are an expert research assistant specialized in investment due diligence. "
+                "Your goal is to conduct thorough, comprehensive research on companies, markets, and investment opportunities.\n\n"
+                
+                "MANDATORY TOOL USAGE RULES:\n"
+                "- You MUST use tool calls (not text descriptions) to gather information.\n"
+                "- When you need information, invoke tools using the tool_calls format (JSON-structured function calls).\n"
+                "- NEVER describe what tools to use in your response content - always make actual tool calls.\n"
+                "- DO NOT output text like 'I should use web_search' or 'I need to call web_fetch'.\n"
+                "- DO NOT write tool names, function names, or arguments as plain text.\n"
+                "- ALWAYS invoke tools directly - the system will execute them automatically.\n\n"
+                
+                "Available tools:\n"
+                "- web_search: Search the web for information using Brave Search. Use this FIRST to find relevant sources.\n"
+                "- web_fetch: Fetch and parse content from web URLs. Use this AFTER search to read articles.\n\n"
+                
+                "Workflow:\n"
+                "1. Start by using web_search to find relevant sources about the topic\n"
+                "2. Use web_fetch to read important articles and pages you found\n"
+                "3. Continue gathering information until you have comprehensive coverage\n"
+                "4. Only provide your final answer when you have sufficient information from tools\n\n"
+                
+                "Explore multiple perspectives, verify facts, and synthesize your findings into a well-structured analysis. "
+                "Remember: ALWAYS use tool calls, NEVER describe tools in text."
+            )
+            
             messages = [
                 {
                     "role": "system",
@@ -323,10 +193,8 @@ class ResearchEngine:
                                 logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
                                 tool_result = await self.tool_registry.execute_tool(tool_name, tool_args)
                                 
-                                # Handle tool results and update metrics
+                                # Handle tool results
                                 if tool_name == "web_search":
-                                    # Track search query
-                                    research_metrics["search_queries"] += 1
                                     # Extract search results and save sources
                                     search_results = tool_result.get("results", [])
                                     for result in search_results:
@@ -353,8 +221,6 @@ class ResearchEngine:
                                                 logger.error(f"Error saving source {url}: {e}", exc_info=True)
                                 
                                 elif tool_name == "web_fetch":
-                                    # Track source fetch
-                                    research_metrics["sources_fetched"] += 1
                                     # Extract fetched content and save source
                                     fetch_content = tool_result.get("content", {})
                                     if isinstance(fetch_content, dict):
@@ -403,9 +269,6 @@ class ResearchEngine:
                         # Add tool results to conversation
                         messages.extend(tool_results)
                         
-                        # Log research metrics periodically
-                        logger.info(f"Research metrics after iteration {iteration_count}: {research_metrics}")
-                        
                         # Prepare iteration data
                         action = f"tool_execution: {', '.join([tc.get('function', {}).get('name', 'unknown') for tc in tool_calls])}"
                         step_result = {
@@ -414,59 +277,12 @@ class ResearchEngine:
                             "timestamp": datetime.utcnow().isoformat(),
                             "step": iteration_count,
                             "tool_calls": tool_calls,
-                            "tool_results": [r.get("content", "") for r in tool_results],
-                            "research_metrics": research_metrics.copy()
+                            "tool_results": [r.get("content", "") for r in tool_results]
                         }
                         
                     else:
-                        # No tool calls - check if minimum iterations reached
-                        if iteration_count < MIN_ITERATIONS:
-                            # Force continuation - need more research iterations
-                            logger.info(f"Model attempted to stop at iteration {iteration_count}, but minimum {MIN_ITERATIONS} iterations required. Forcing continuation.")
-                            
-                            # Add system message encouraging more research
-                            messages.append({
-                                "role": "system",
-                                "content": (
-                                    f"You need to conduct at least {MIN_ITERATIONS} research iterations before providing a final answer. "
-                                    f"You're currently at iteration {iteration_count}. "
-                                    f"Continue exploring with tool calls - search for different angles, fetch more sources, "
-                                    f"and deepen your investigation. Do not provide a final answer yet."
-                                )
-                            })
-                            
-                            # Prepare iteration data for forced continuation
-                            action = "forced_continuation"
-                            step_result = {
-                                "status": "completed",
-                                "action": action,
-                                "timestamp": datetime.utcnow().isoformat(),
-                                "step": iteration_count,
-                                "content": content,
-                                "reason": f"Minimum {MIN_ITERATIONS} iterations not reached (currently {iteration_count})"
-                            }
-                            
-                            # Persist iteration
-                            await add_iteration(job_id, iteration_count, action, step_result)
-                            
-                            # Broadcast iteration
-                            if connection_manager:
-                                iteration_data = {
-                                    "id": f"{job_id}-iter-{iteration_count}",
-                                    "step": iteration_count,
-                                    "action": action,
-                                    "timestamp": step_result.get("timestamp"),
-                                    "results": step_result
-                                }
-                                asyncio.create_task(
-                                    connection_manager.broadcast_iteration(job_id, iteration_data)
-                                )
-                            
-                            # Continue loop - don't break
-                            continue
-                        
-                        # Minimum iterations reached - final answer allowed
-                        logger.info(f"Final answer received in iteration {iteration_count} (minimum {MIN_ITERATIONS} iterations satisfied)")
+                        # No tool calls - final answer received
+                        logger.info(f"Final answer received in iteration {iteration_count}")
                         
                         # Prepare iteration data
                         action = "final_answer"
@@ -713,11 +529,9 @@ Generate the report now:"""
             ]
             
             logger.info(f"Calling Tongyi API for report synthesis")
-            # Use longer timeout for synthesis (120s) as it may take longer with large contexts
             response = await self.tongyi_client.chat_completion(
                 messages=messages,
-                tools=None,  # No tools needed for synthesis
-                timeout=120.0  # 2 minutes for synthesis requests
+                tools=None  # No tools needed for synthesis
             )
             
             # Extract report content

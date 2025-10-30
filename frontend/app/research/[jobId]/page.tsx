@@ -3,34 +3,149 @@
  */
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import type { ResearchJob } from "@/types/research";
+import type { ResearchJob, WebSocketMessage } from "@/types/research";
 import ProgressBar from "@/components/ProgressBar";
 import IterationCard from "@/components/IterationCard";
 import SourcePanel from "@/components/SourcePanel";
 import OutputViewer from "@/components/OutputViewer";
 import { useWebSocket } from "@/lib/websocket";
+import { getResearchJob, ApiError } from "@/lib/api";
 
 export default function ResearchJobPage() {
   const params = useParams();
   const jobId = params.jobId as string;
   const [job, setJob] = useState<ResearchJob | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // TODO: Fetch job data from API
+  // Fetch initial job data
   useEffect(() => {
-    // TODO: Implement API call to fetch job
-    setLoading(false);
+    let cancelled = false;
+
+    const fetchJob = async () => {
+      if (!jobId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const jobData = await getResearchJob(jobId);
+        
+        if (!cancelled) {
+          setJob(jobData);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          if (err instanceof ApiError) {
+            if (err.status === 404) {
+              setError("Job not found");
+            } else {
+              setError(`Failed to fetch job: ${err.message}`);
+            }
+          } else {
+            setError("An unexpected error occurred");
+          }
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchJob();
+
+    return () => {
+      cancelled = true;
+    };
   }, [jobId]);
+
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+    console.log("WebSocket message:", message);
+
+    setJob((prevJob) => {
+      if (!prevJob) return prevJob;
+
+      const updatedJob = { ...prevJob };
+
+      switch (message.type) {
+        case "status": {
+          const data = message.data as { status?: string; progress?: number };
+          if (data.status) {
+            updatedJob.status = data.status as ResearchJob["status"];
+          }
+          if (typeof data.progress === "number") {
+            updatedJob.progress = data.progress;
+          }
+          break;
+        }
+
+        case "iteration": {
+          const iterationData = message.data as ResearchJob["iterations"][0];
+          if (iterationData && iterationData.id) {
+            const existingIndex = updatedJob.iterations.findIndex(
+              (iter) => iter.id === iterationData.id
+            );
+            if (existingIndex >= 0) {
+              // Update existing iteration
+              updatedJob.iterations[existingIndex] = iterationData;
+            } else {
+              // Add new iteration
+              updatedJob.iterations = [...updatedJob.iterations, iterationData];
+            }
+          }
+          break;
+        }
+
+        case "source": {
+          const sourceData = message.data as ResearchJob["sources"][0];
+          if (sourceData && sourceData.url) {
+            const existingIndex = updatedJob.sources.findIndex(
+              (source) => source.url === sourceData.url
+            );
+            if (existingIndex >= 0) {
+              // Update existing source
+              updatedJob.sources[existingIndex] = sourceData;
+            } else {
+              // Add new source
+              updatedJob.sources = [...updatedJob.sources, sourceData];
+            }
+          }
+          break;
+        }
+
+        case "report": {
+          const data = message.data as { report?: string };
+          if (data.report) {
+            updatedJob.report = data.report;
+          }
+          break;
+        }
+
+        case "error": {
+          const data = message.data as { error?: string };
+          if (data.error) {
+            updatedJob.error = data.error;
+            updatedJob.status = "failed" as ResearchJob["status"];
+          }
+          break;
+        }
+
+        default:
+          console.warn("Unknown WebSocket message type:", message.type);
+      }
+
+      return updatedJob;
+    });
+  }, []);
 
   // WebSocket connection for real-time updates
   const { isConnected, lastMessage } = useWebSocket({
     jobId,
-    onMessage: (message) => {
-      // TODO: Update job state based on WebSocket messages
-      console.log("WebSocket message:", message);
-    },
+    onMessage: handleWebSocketMessage,
   });
 
   if (loading) {
@@ -41,10 +156,12 @@ export default function ResearchJobPage() {
     );
   }
 
-  if (!job) {
+  if (error || !job) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500 dark:text-gray-400">Job not found</div>
+        <div className="text-gray-500 dark:text-gray-400">
+          {error || "Job not found"}
+        </div>
       </div>
     );
   }

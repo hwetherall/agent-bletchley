@@ -4,7 +4,7 @@ Jina Reader API wrapper for fetching and parsing web content.
 import logging
 import httpx
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, List
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -63,20 +63,27 @@ class WebFetchTool:
     
     async def fetch(
         self,
-        url: str,
+        url: Union[str, List[str]],
         mode: str = "reader"
     ) -> Dict[str, Any]:
         """
         Fetch and parse content from a URL using Jina Reader API.
         
         Args:
-            url: The URL to fetch (e.g., https://example.com)
+            url: The URL to fetch (e.g., https://example.com) or a list of URLs
             mode: Reader mode (reader, raw, etc.) - currently only "reader" is supported
             
         Returns:
             Dictionary with url, title, content, word_count on success.
             Dictionary with "error" key on failure.
         """
+        # Handle list of URLs - use first URL (same pattern as web_search)
+        if isinstance(url, list):
+            if not url:
+                return {"error": "URL is required"}
+            logger.warning(f"Tongyi sent multiple URLs: {url}. Using first URL: {url[0]}")
+            url = url[0]
+        
         # Validate input
         if not url or not url.strip():
             logger.warning("Empty URL provided")
