@@ -47,6 +47,8 @@ backend/app/api/__init__.py
 backend/app/api/routes.py
 backend/app/api/websocket.py
 backend/app/config.py
+backend/app/db/__init__.py
+backend/app/db/supabase_client.py
 backend/app/main.py
 backend/app/models/__init__.py
 backend/app/models/research_job.py
@@ -60,6 +62,7 @@ backend/app/tools/web_search.py
 backend/README.md
 backend/requirements.txt
 backend/start.ps1
+backend/test_websocket.py
 frontend/.env.local.example
 frontend/app/api/research/route.ts
 frontend/app/globals.css
@@ -85,6 +88,472 @@ supabase/migrations/001_initial_schema.sql
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="backend/app/db/supabase_client.py">
+"""
+Supabase database client for Agent Bletchley research jobs.
+"""
+import asyncio
+import logging
+from typing import Dict, List, Optional, Any
+from uuid import UUID
+from supabase import create_client, Client
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Initialize Supabase client singleton
+_supabase_client: Optional[Client] = None
+
+
+def get_client() -> Client:
+    """Get or create Supabase client instance."""
+    global _supabase_client
+    if _supabase_client is None:
+        if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
+            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+        _supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        logger.info("Initialized Supabase client")
+    return _supabase_client
+
+
+async def create_job(query: str, context: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Create a new research job in the database.
+    
+    Args:
+        query: The research query
+        context: Optional context dictionary
+        
+    Returns:
+        Job ID as string
+    """
+    try:
+        client = get_client()
+        
+        job_data = {
+            "query": query,
+            "status": "pending",
+            "progress": 0.0,
+            "context": context or {}
+        }
+        
+        response = await asyncio.to_thread(
+            lambda: client.table("research_jobs").insert(job_data).execute()
+        )
+        
+        if response.data and len(response.data) > 0:
+            job_id = str(response.data[0]["id"])
+            logger.info(f"Created research job {job_id} with query: {query}")
+            return job_id
+        else:
+            raise ValueError("No data returned from database insert")
+            
+    except Exception as e:
+        logger.error(f"Error creating research job: {e}", exc_info=True)
+        raise
+
+
+async def update_job_status(
+    job_id: str, 
+    status: str, 
+    progress: Optional[float] = None
+) -> None:
+    """
+    Update research job status and progress.
+    
+    Args:
+        job_id: The job ID
+        status: New status (pending, running, completed, failed, cancelled)
+        progress: Optional progress percentage (0-100)
+    """
+    try:
+        client = get_client()
+        
+        update_data: Dict[str, Any] = {"status": status}
+        
+        if progress is not None:
+            # Ensure progress is within bounds
+            update_data["progress"] = max(0.0, min(100.0, float(progress)))
+        
+        # Set completed_at timestamp if status is "completed"
+        if status == "completed":
+            from datetime import datetime, timezone
+            update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+        
+        await asyncio.to_thread(
+            lambda: client.table("research_jobs")
+            .update(update_data)
+            .eq("id", job_id)
+            .execute()
+        )
+        
+        logger.info(f"Updated job {job_id} status to {status}" + 
+                   (f" with progress {progress}" if progress is not None else ""))
+        
+    except Exception as e:
+        logger.error(f"Error updating job {job_id} status: {e}", exc_info=True)
+        raise
+
+
+async def update_job_report(job_id: str, report: str) -> None:
+    """
+    Update research job report.
+    
+    Args:
+        job_id: The job ID
+        report: The final research report
+    """
+    try:
+        client = get_client()
+        
+        await asyncio.to_thread(
+            lambda: client.table("research_jobs")
+            .update({"report": report})
+            .eq("id", job_id)
+            .execute()
+        )
+        
+        logger.info(f"Updated job {job_id} report")
+        
+    except Exception as e:
+        logger.error(f"Error updating job {job_id} report: {e}", exc_info=True)
+        raise
+
+
+async def add_iteration(
+    job_id: str, 
+    step: int, 
+    action: str, 
+    results: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Add a research iteration to the database.
+    
+    Args:
+        job_id: The job ID
+        step: Step number
+        action: Action description
+        results: Optional results dictionary
+        
+    Returns:
+        Iteration ID as string
+    """
+    try:
+        client = get_client()
+        
+        iteration_data = {
+            "job_id": job_id,
+            "step": step,
+            "action": action,
+            "results": results or {}
+        }
+        
+        response = await asyncio.to_thread(
+            lambda: client.table("research_iterations")
+            .insert(iteration_data)
+            .execute()
+        )
+        
+        if response.data and len(response.data) > 0:
+            iteration_id = str(response.data[0]["id"])
+            logger.info(f"Added iteration {iteration_id} for job {job_id}, step {step}")
+            return iteration_id
+        else:
+            raise ValueError("No data returned from database insert")
+            
+    except Exception as e:
+        logger.error(f"Error adding iteration for job {job_id}: {e}", exc_info=True)
+        raise
+
+
+async def add_source(
+    job_id: str,
+    url: str,
+    title: Optional[str] = None,
+    snippet: Optional[str] = None,
+    content: Optional[str] = None
+) -> str:
+    """
+    Add a research source to the database (with upsert for duplicate URLs).
+    
+    Args:
+        job_id: The job ID
+        url: Source URL
+        title: Optional source title
+        snippet: Optional snippet
+        content: Optional full content
+        
+    Returns:
+        Source ID as string
+    """
+    try:
+        client = get_client()
+        
+        source_data = {
+            "job_id": job_id,
+            "url": url,
+            "title": title,
+            "snippet": snippet,
+            "content": content
+        }
+        
+        # Use upsert to handle duplicate URLs per job
+        # The UNIQUE constraint on (job_id, url) will handle conflicts
+        # Supabase will automatically detect the unique constraint
+        try:
+            # Try insert first
+            response = await asyncio.to_thread(
+                lambda: client.table("research_sources")
+                .insert(source_data)
+                .execute()
+            )
+        except Exception as insert_error:
+            # If insert fails due to duplicate, try update
+            if "duplicate" in str(insert_error).lower() or "unique" in str(insert_error).lower():
+                # Update existing source
+                response = await asyncio.to_thread(
+                    lambda: client.table("research_sources")
+                    .update(source_data)
+                    .eq("job_id", job_id)
+                    .eq("url", url)
+                    .execute()
+                )
+            else:
+                raise
+        
+        if response.data and len(response.data) > 0:
+            source_id = str(response.data[0]["id"])
+            logger.info(f"Added/updated source {source_id} for job {job_id}: {url}")
+            return source_id
+        else:
+            raise ValueError("No data returned from database upsert")
+            
+    except Exception as e:
+        logger.error(f"Error adding source for job {job_id}: {e}", exc_info=True)
+        raise
+
+
+async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get a research job with related iterations and sources.
+    
+    Args:
+        job_id: The job ID
+        
+    Returns:
+        Complete job data as dictionary, or None if not found
+    """
+    try:
+        client = get_client()
+        
+        # Fetch job
+        job_response = await asyncio.to_thread(
+            lambda: client.table("research_jobs")
+            .select("*")
+            .eq("id", job_id)
+            .execute()
+        )
+        
+        if not job_response.data or len(job_response.data) == 0:
+            logger.warning(f"Job {job_id} not found")
+            return None
+        
+        job = job_response.data[0]
+        
+        # Convert UUID to string
+        job["id"] = str(job["id"])
+        
+        # Fetch iterations
+        iterations_response = await asyncio.to_thread(
+            lambda: client.table("research_iterations")
+            .select("*")
+            .eq("job_id", job_id)
+            .order("step")
+            .execute()
+        )
+        
+        iterations = []
+        if iterations_response.data:
+            for iteration in iterations_response.data:
+                iteration["id"] = str(iteration["id"])
+                iteration["job_id"] = str(iteration["job_id"])
+                iterations.append(iteration)
+        
+        # Fetch sources
+        sources_response = await asyncio.to_thread(
+            lambda: client.table("research_sources")
+            .select("*")
+            .eq("job_id", job_id)
+            .order("fetched_at")
+            .execute()
+        )
+        
+        sources = []
+        if sources_response.data:
+            for source in sources_response.data:
+                source["id"] = str(source["id"])
+                source["job_id"] = str(source["job_id"])
+                sources.append(source)
+        
+        # Combine job with iterations and sources
+        job["iterations"] = iterations
+        job["sources"] = sources
+        
+        logger.info(f"Retrieved job {job_id} with {len(iterations)} iterations and {len(sources)} sources")
+        return job
+        
+    except Exception as e:
+        logger.error(f"Error getting job {job_id}: {e}", exc_info=True)
+        raise
+
+
+async def list_jobs(skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+    """
+    List research jobs with pagination.
+    
+    Args:
+        skip: Number of jobs to skip
+        limit: Maximum number of jobs to return
+        
+    Returns:
+        List of job dictionaries
+    """
+    try:
+        client = get_client()
+        
+        response = await asyncio.to_thread(
+            lambda: client.table("research_jobs")
+            .select("*")
+            .order("created_at", desc=True)
+            .range(skip, skip + limit - 1)
+            .execute()
+        )
+        
+        jobs = []
+        if response.data:
+            for job in response.data:
+                job["id"] = str(job["id"])
+                jobs.append(job)
+        
+        logger.info(f"Listed {len(jobs)} jobs (skip={skip}, limit={limit})")
+        return jobs
+        
+    except Exception as e:
+        logger.error(f"Error listing jobs: {e}", exc_info=True)
+        raise
+</file>
+
+<file path="backend/test_websocket.py">
+"""
+Test script for WebSocket connection to the research job endpoint.
+"""
+import asyncio
+import websockets
+import json
+
+
+async def test_websocket():
+    """Test WebSocket connection to research job endpoint."""
+    uri = "ws://localhost:8000/ws/research/test-job-123"
+    
+    # First, check if server is running by testing HTTP endpoint
+    import httpx
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get("http://localhost:8000/health")
+            if resp.status_code == 200:
+                print("✓ Server is running")
+            else:
+                print(f"⚠ Server responded with status {resp.status_code}")
+    except httpx.ConnectError:
+        print(f"✗ Cannot reach server at http://localhost:8000")
+        print(f"\n💡 Make sure the server is running:")
+        print(f"   cd backend")
+        print(f"   .\\venv\\Scripts\\Activate.ps1")
+        print(f"   uvicorn app.main:app --reload")
+        return
+    except Exception as e:
+        print(f"✗ Error checking server: {e}")
+        print(f"\n💡 Make sure the server is running:")
+        print(f"   cd backend")
+        print(f"   .\\venv\\Scripts\\Activate.ps1")
+        print(f"   uvicorn app.main:app --reload")
+        return
+    
+    try:
+        print(f"\nConnecting to {uri}...")
+        async with websockets.connect(uri, ping_interval=20, ping_timeout=10) as websocket:
+            print("✓ Connected! Waiting for initial message from server...")
+            
+            # Create a task to receive messages
+            async def receive_messages():
+                try:
+                    while True:
+                        # Use a timeout to detect if connection is still alive
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                            data = json.loads(message)
+                            print(f"\n[Received] Type: {data.get('type', 'unknown')}")
+                            print(f"         Data: {json.dumps(data.get('data', {}), indent=2)}")
+                        except asyncio.TimeoutError:
+                            print("(Still waiting for messages...)")
+                            continue
+                except websockets.exceptions.ConnectionClosed as e:
+                    print(f"\n✗ Connection closed by server (code: {e.code}, reason: {e.reason})")
+                    return
+                except Exception as e:
+                    print(f"\n✗ Error receiving messages: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return
+            
+            # Create a task to send ping messages periodically
+            async def send_ping():
+                await asyncio.sleep(1)  # Wait a bit before first ping
+                ping_count = 0
+                while True:
+                    try:
+                        ping_count += 1
+                        await websocket.send(json.dumps({
+                            "type": "ping", 
+                            "message": f"Ping #{ping_count} from test client"
+                        }))
+                        print(f"\n✓ Sent ping #{ping_count}")
+                        await asyncio.sleep(3)  # Send ping every 3 seconds
+                    except websockets.exceptions.ConnectionClosed:
+                        return
+                    except Exception as e:
+                        print(f"\n✗ Error sending ping: {e}")
+                        return
+            
+            # Run both tasks concurrently
+            try:
+                await asyncio.gather(
+                    receive_messages(),
+                    send_ping()
+                )
+            except KeyboardInterrupt:
+                print("\n\n✓ Test interrupted by user (Ctrl+C)")
+                print("✓ WebSocket connection test completed successfully!")
+                
+    except websockets.exceptions.InvalidURI:
+        print(f"✗ Invalid URI: {uri}")
+    except websockets.exceptions.InvalidStatus as e:
+        print(f"✗ Connection failed with status {e.status_code}: {e.status_line}")
+    except ConnectionRefusedError:
+        print("✗ Connection refused. Is the server running on port 8000?")
+    except websockets.exceptions.ConnectionClosed as e:
+        print(f"✗ Connection closed (code: {e.code}, reason: {e.reason})")
+    except Exception as e:
+        print(f"\n✗ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    asyncio.run(test_websocket())
+</file>
 
 <file path=".gitignore">
 # Python
@@ -204,11 +673,13 @@ API routes module.
 REST API routes for research jobs.
 """
 import logging
-import uuid
+from datetime import datetime
 from typing import List
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.models.research_job import ResearchJob, ResearchJobCreate, ResearchJobStatus
 from app.orchestrator.research_engine import ResearchEngine
+from app.api.websocket import manager as connection_manager
+from app.db.supabase_client import create_job, get_job, list_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -231,22 +702,25 @@ async def create_research_job(
     Returns:
         Created research job
     """
-    # TODO: Validate job data
-    # TODO: Store job in database
-    # TODO: Start research process in background
+    # Store job in database
+    job_id = await create_job(job_data.query, job_data.context)
+    logger.info(f"Created research job {job_id} with query: {job_data.query}")
     
-    job_id = str(uuid.uuid4())
-    logger.info(f"Creating research job {job_id} with query: {job_data.query}")
-    
-    job = ResearchJob(
-        id=job_id,
-        query=job_data.query,
-        status=ResearchJobStatus.PENDING,
+    # Start research in background with WebSocket support
+    background_tasks.add_task(
+        research_engine.start_research,
+        job_data.query,
+        job_id,
+        connection_manager
     )
     
-    # TODO: Start research in background
-    # background_tasks.add_task(research_engine.start_research, job_data.query, job_id)
+    # Fetch and return the created job
+    db_job = await get_job(job_id)
+    if not db_job:
+        raise HTTPException(status_code=500, detail="Failed to retrieve created job")
     
+    # Convert database dict to ResearchJob model
+    job = _dict_to_research_job(db_job)
     return job
 
 
@@ -261,9 +735,15 @@ async def get_research_job(job_id: str) -> ResearchJob:
     Returns:
         Research job
     """
-    # TODO: Fetch job from database
+    # Fetch job from database
+    db_job = await get_job(job_id)
     
-    raise HTTPException(status_code=404, detail="Job not found")
+    if not db_job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Convert database dict to ResearchJob model
+    job = _dict_to_research_job(db_job)
+    return job
 
 
 @router.get("/jobs", response_model=List[ResearchJob])
@@ -281,9 +761,50 @@ async def list_research_jobs(
     Returns:
         List of research jobs
     """
-    # TODO: Fetch jobs from database with pagination
+    # Fetch jobs from database with pagination
+    db_jobs = await list_jobs(skip, limit)
     
-    return []
+    # Convert list of dicts to list of ResearchJob models
+    jobs = [_dict_to_research_job(db_job) for db_job in db_jobs]
+    return jobs
+
+
+def _dict_to_research_job(db_job: dict) -> ResearchJob:
+    """
+    Convert database dictionary to ResearchJob model.
+    
+    Args:
+        db_job: Database job dictionary
+        
+    Returns:
+        ResearchJob model instance
+    """
+    # Parse timestamps
+    created_at = db_job.get("created_at")
+    if isinstance(created_at, str):
+        created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    
+    updated_at = db_job.get("updated_at")
+    if updated_at and isinstance(updated_at, str):
+        updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    
+    completed_at = db_job.get("completed_at")
+    if completed_at and isinstance(completed_at, str):
+        completed_at = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    
+    return ResearchJob(
+        id=str(db_job["id"]),
+        query=db_job["query"],
+        status=ResearchJobStatus(db_job["status"]),
+        progress=float(db_job.get("progress", 0.0)),
+        created_at=created_at or datetime.utcnow(),
+        updated_at=updated_at,
+        completed_at=completed_at,
+        sources=db_job.get("sources", []),
+        iterations=db_job.get("iterations", []),
+        report=db_job.get("report"),
+        error=db_job.get("error")
+    )
 
 
 @router.delete("/jobs/{job_id}")
@@ -308,9 +829,9 @@ WebSocket handler for real-time research updates.
 """
 import logging
 import json
-from typing import Set
+from typing import Set, Dict, Optional
+from collections import defaultdict
 from fastapi import WebSocket, WebSocketDisconnect
-from app.orchestrator.research_engine import ResearchEngine
 
 logger = logging.getLogger(__name__)
 
@@ -320,19 +841,34 @@ class ConnectionManager:
     
     def __init__(self):
         """Initialize the connection manager."""
-        self.active_connections: Set[WebSocket] = set()
-        self.research_engine = ResearchEngine()
+        self.active_connections: Dict[str, Set[WebSocket]] = defaultdict(set)
     
-    async def connect(self, websocket: WebSocket) -> None:
-        """Accept a new WebSocket connection."""
+    async def connect(self, websocket: WebSocket, job_id: str) -> None:
+        """
+        Accept a new WebSocket connection and associate it with a job_id.
+        
+        Args:
+            websocket: WebSocket connection
+            job_id: Research job ID to associate with this connection
+        """
         await websocket.accept()
-        self.active_connections.add(websocket)
-        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+        self.active_connections[job_id].add(websocket)
+        logger.info(f"WebSocket connected for job {job_id}. Total connections for job: {len(self.active_connections[job_id])}")
     
-    def disconnect(self, websocket: WebSocket) -> None:
-        """Remove a WebSocket connection."""
-        self.active_connections.discard(websocket)
-        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+    def disconnect(self, websocket: WebSocket, job_id: str) -> None:
+        """
+        Remove a WebSocket connection from the specified job.
+        
+        Args:
+            websocket: WebSocket connection to remove
+            job_id: Research job ID associated with this connection
+        """
+        if job_id in self.active_connections:
+            self.active_connections[job_id].discard(websocket)
+            # Clean up empty sets
+            if not self.active_connections[job_id]:
+                del self.active_connections[job_id]
+        logger.info(f"WebSocket disconnected for job {job_id}")
     
     async def send_personal_message(self, message: dict, websocket: WebSocket) -> None:
         """Send a message to a specific WebSocket connection."""
@@ -341,19 +877,132 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Error sending WebSocket message: {e}")
     
-    async def broadcast(self, message: dict) -> None:
-        """Broadcast a message to all connected WebSocket clients."""
+    async def _broadcast_to_job(self, job_id: str, message: dict) -> None:
+        """
+        Internal method to broadcast a message to all connections for a specific job.
+        
+        Args:
+            job_id: Research job ID to broadcast to
+            message: Message dictionary to send
+        """
+        if job_id not in self.active_connections:
+            logger.debug(f"No active connections for job {job_id}")
+            return
+        
         disconnected = set()
-        for connection in self.active_connections:
+        connections = self.active_connections[job_id].copy()  # Copy to avoid modification during iteration
+        
+        for connection in connections:
             try:
                 await connection.send_json(message)
             except Exception as e:
-                logger.error(f"Error broadcasting to WebSocket: {e}")
+                logger.error(f"Error broadcasting to WebSocket for job {job_id}: {e}")
                 disconnected.add(connection)
         
         # Remove disconnected connections
         for connection in disconnected:
-            self.active_connections.discard(connection)
+            self.active_connections[job_id].discard(connection)
+        
+        # Clean up empty sets
+        if not self.active_connections[job_id]:
+            del self.active_connections[job_id]
+    
+    async def broadcast_status(self, job_id: str, status: str, progress: Optional[float] = None) -> None:
+        """
+        Broadcast status update to all clients connected to a specific job.
+        
+        Args:
+            job_id: Research job ID
+            status: Job status (pending, running, completed, failed, cancelled)
+            progress: Optional progress percentage (0-100)
+        """
+        message = {
+            "type": "status",
+            "job_id": job_id,
+            "data": {
+                "status": status,
+                "progress": progress
+            }
+        }
+        await self._broadcast_to_job(job_id, message)
+    
+    async def broadcast_iteration(self, job_id: str, iteration_data: dict) -> None:
+        """
+        Broadcast iteration update to all clients connected to a specific job.
+        
+        Args:
+            job_id: Research job ID
+            iteration_data: Dictionary containing iteration information
+        """
+        message = {
+            "type": "iteration",
+            "job_id": job_id,
+            "data": iteration_data
+        }
+        await self._broadcast_to_job(job_id, message)
+    
+    async def broadcast_source(self, job_id: str, source_data: dict) -> None:
+        """
+        Broadcast source discovery update to all clients connected to a specific job.
+        
+        Args:
+            job_id: Research job ID
+            source_data: Dictionary containing source information
+        """
+        message = {
+            "type": "source",
+            "job_id": job_id,
+            "data": source_data
+        }
+        await self._broadcast_to_job(job_id, message)
+    
+    async def broadcast_report(self, job_id: str, report: str) -> None:
+        """
+        Broadcast final report to all clients connected to a specific job.
+        
+        Args:
+            job_id: Research job ID
+            report: Final research report text
+        """
+        message = {
+            "type": "report",
+            "job_id": job_id,
+            "data": {
+                "report": report
+            }
+        }
+        await self._broadcast_to_job(job_id, message)
+    
+    async def broadcast_error(self, job_id: str, error_message: str) -> None:
+        """
+        Broadcast error message to all clients connected to a specific job.
+        
+        Args:
+            job_id: Research job ID
+            error_message: Error message to send
+        """
+        message = {
+            "type": "error",
+            "job_id": job_id,
+            "data": {
+                "error": error_message
+            }
+        }
+        await self._broadcast_to_job(job_id, message)
+    
+    async def broadcast(self, message: dict) -> None:
+        """
+        Broadcast a message to all connected WebSocket clients (legacy method).
+        Note: Prefer using job-specific broadcast methods instead.
+        
+        Args:
+            message: Message dictionary to send
+        """
+        job_id = message.get("job_id")
+        if job_id:
+            await self._broadcast_to_job(job_id, message)
+        else:
+            logger.warning("Broadcast message missing job_id, skipping")
 
 
 manager = ConnectionManager()
@@ -367,81 +1016,96 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str) -> None:
         websocket: WebSocket connection
         job_id: Research job ID to subscribe to
     """
-    await manager.connect(websocket)
+    try:
+        await manager.connect(websocket, job_id)
+        logger.info(f"WebSocket connection established for job {job_id}")
+    except Exception as e:
+        logger.error(f"Error accepting WebSocket connection for job {job_id}: {e}", exc_info=True)
+        return
     
     try:
-        # TODO: Subscribe to job updates
-        # TODO: Send initial job state
-        # TODO: Listen for updates and forward to client
+        # Send initial connection confirmation
+        try:
+            await manager.send_personal_message({
+                "type": "connected",
+                "job_id": job_id,
+                "data": {"message": "WebSocket connected successfully"}
+            }, websocket)
+            logger.info(f"Sent initial connection message for job {job_id}")
+        except Exception as e:
+            logger.error(f"Error sending initial connection message for job {job_id}: {e}", exc_info=True)
+            # Don't return, continue to the message loop
         
+        # Keep connection alive and listen for messages
         while True:
-            # Keep connection alive and listen for messages
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            
-            # TODO: Handle client messages (pause, cancel, etc.)
-            logger.info(f"Received WebSocket message for job {job_id}: {message}")
+            try:
+                # Wait for message from client (this will block until a message is received)
+                data = await websocket.receive_text()
+                logger.debug(f"Received raw message for job {job_id}: {data[:100]}...")
+                
+                try:
+                    message = json.loads(data)
+                    logger.info(f"Received WebSocket message for job {job_id}: {message}")
+                    
+                    # Handle client messages (ping, pause, cancel, etc.)
+                    msg_type = message.get("type", "")
+                    if msg_type == "ping":
+                        # Respond to ping with pong
+                        try:
+                            await manager.send_personal_message({
+                                "type": "pong",
+                                "job_id": job_id,
+                                "data": {"message": "pong"}
+                            }, websocket)
+                            logger.debug(f"Sent pong response for job {job_id}")
+                        except Exception as e:
+                            logger.error(f"Error sending pong for job {job_id}: {e}", exc_info=True)
+                    else:
+                        # Echo other messages back or handle them
+                        logger.debug(f"Unhandled message type: {msg_type} for job {job_id}")
+                        
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON received from client for job {job_id}: {e}. Data: {data[:100]}")
+                    try:
+                        await manager.send_personal_message({
+                            "type": "error",
+                            "job_id": job_id,
+                            "data": {"error": "Invalid JSON format"}
+                        }, websocket)
+                    except Exception as send_error:
+                        logger.error(f"Error sending error message for job {job_id}: {send_error}", exc_info=True)
+                    
+            except WebSocketDisconnect:
+                # This is expected when client disconnects
+                logger.info(f"WebSocket disconnected normally for job {job_id}")
+                break
+            except Exception as e:
+                logger.error(f"Error processing WebSocket message for job {job_id}: {e}", exc_info=True)
+                # Continue the loop to keep connection alive unless it's a disconnect
+                # Check if websocket is still connected
+                try:
+                    # Try to send an error message to see if connection is still alive
+                    await manager.send_personal_message({
+                        "type": "error",
+                        "job_id": job_id,
+                        "data": {"error": "Internal error processing message"}
+                    }, websocket)
+                except Exception:
+                    # Connection is likely dead, break out of loop
+                    logger.warning(f"Connection appears to be dead for job {job_id}, breaking loop")
+                    break
+                continue
             
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
         logger.info(f"WebSocket disconnected for job {job_id}")
-</file>
-
-<file path="backend/app/config.py">
-"""
-Configuration management using environment variables.
-"""
-import os
-from typing import Optional
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-
-class Settings:
-    """Application settings loaded from environment variables."""
-    
-    # API Keys
-    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
-    BRAVE_SEARCH_API_KEY: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
-    JINA_READER_API_KEY: str = os.getenv("JINA_READER_API_KEY", "")
-    
-    # Supabase
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
-    
-    # OpenRouter Configuration
-    OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    TONGYI_MODEL: str = os.getenv("TONGYI_MODEL", "alibaba/tongyi-deepresearch-30b-a3b")
-    
-    # Server Configuration
-    BACKEND_HOST: str = os.getenv("BACKEND_HOST", "0.0.0.0")
-    BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
-    
-    # CORS
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    
-    # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    
-    @classmethod
-    def validate(cls) -> None:
-        """Validate that required environment variables are set."""
-        required_vars = [
-            "OPENROUTER_API_KEY",
-            "BRAVE_SEARCH_API_KEY",
-            "JINA_READER_API_KEY",
-            "SUPABASE_URL",
-            "SUPABASE_KEY",
-        ]
-        missing = [var for var in required_vars if not getattr(cls, var)]
-        if missing:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
-
-
-# Global settings instance
-settings = Settings()
+    except Exception as e:
+        logger.error(f"Unexpected error in WebSocket endpoint for job {job_id}: {e}", exc_info=True)
+    finally:
+        # Always clean up the connection
+        try:
+            manager.disconnect(websocket, job_id)
+        except Exception as e:
+            logger.error(f"Error during WebSocket disconnect cleanup for job {job_id}: {e}", exc_info=True)
 </file>
 
 <file path="backend/app/main.py">
@@ -571,10 +1235,20 @@ Research orchestrator module.
 Main research engine that orchestrates the research process.
 """
 import logging
-from typing import Dict, List, Any, Optional
+import asyncio
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from app.models.research_job import ResearchJob, ResearchJobStatus
 from app.orchestrator.tongyi_client import TongyiClient
 from app.tools.tool_registry import ToolRegistry
+from app.db.supabase_client import (
+    update_job_status as db_update_job_status,
+    update_job_report,
+    add_iteration,
+    add_source
+)
+
+if TYPE_CHECKING:
+    from app.api.websocket import ConnectionManager
 
 logger = logging.getLogger(__name__)
 
@@ -596,30 +1270,174 @@ class ResearchEngine:
         self.tongyi_client = TongyiClient()
         self.tool_registry = ToolRegistry()
     
-    async def start_research(self, query: str, job_id: str) -> ResearchJob:
+    async def start_research(
+        self, 
+        query: str, 
+        job_id: str, 
+        connection_manager: Optional["ConnectionManager"] = None
+    ) -> ResearchJob:
         """
         Start a new research job.
         
         Args:
             query: The research query/question
             job_id: Unique identifier for this research job
+            connection_manager: Optional WebSocket connection manager for real-time updates
             
         Returns:
             ResearchJob instance with initial status
         """
         # TODO: Create initial research job in database
         # TODO: Initialize research context and state
-        # TODO: Begin research loop
         
         logger.info(f"Starting research job {job_id} with query: {query}")
+        
+        # Update job status to running in database
+        await db_update_job_status(job_id, "running", 0.0)
         
         job = ResearchJob(
             id=job_id,
             query=query,
-            status=ResearchJobStatus.PENDING,
+            status=ResearchJobStatus.RUNNING,
         )
         
+        # Broadcast initial RUNNING status
+        if connection_manager:
+            asyncio.create_task(
+                connection_manager.broadcast_status(job_id, ResearchJobStatus.RUNNING.value, 0.0)
+            )
+        
+        # Begin research loop
+        asyncio.create_task(self._run_research_loop(job_id, query, connection_manager))
+        
         return job
+    
+    async def _run_research_loop(
+        self,
+        job_id: str,
+        query: str,
+        connection_manager: Optional["ConnectionManager"] = None
+    ) -> None:
+        """
+        Run the main research loop (simulated for now).
+        
+        Args:
+            job_id: Research job ID
+            query: Research query
+            connection_manager: Optional WebSocket connection manager
+        """
+        max_iterations = 20
+        iteration_count = 0
+        
+        try:
+            # Update status to RUNNING in database (already done in start_research, but ensure it's set)
+            await db_update_job_status(job_id, "running", 0.0)
+            
+            # Broadcast status to WebSocket
+            if connection_manager:
+                asyncio.create_task(
+                    connection_manager.broadcast_status(job_id, ResearchJobStatus.RUNNING.value, 0.0)
+                )
+            
+            # TODO: Implement actual research loop with Tongyi agent
+            # For now, simulate iterations
+            while iteration_count < max_iterations:
+                iteration_count += 1
+                progress = min(100, (iteration_count / max_iterations) * 100)
+                
+                # Execute research step
+                step_result = await self.execute_research_step(
+                    job_id,
+                    {"step": iteration_count, "query": query}
+                )
+                
+                # Persist iteration to database
+                action = step_result.get("action", "research")
+                results = step_result
+                await add_iteration(job_id, iteration_count, action, results)
+                
+                # Broadcast iteration update
+                if connection_manager:
+                    iteration_data = {
+                        "id": f"{job_id}-iter-{iteration_count}",
+                        "step": iteration_count,
+                        "action": action,
+                        "timestamp": step_result.get("timestamp"),
+                        "results": step_result
+                    }
+                    asyncio.create_task(
+                        connection_manager.broadcast_iteration(job_id, iteration_data)
+                    )
+                
+                # Update progress in database
+                await db_update_job_status(job_id, "running", progress)
+                
+                # Broadcast progress update
+                if connection_manager:
+                    asyncio.create_task(
+                        connection_manager.broadcast_status(job_id, ResearchJobStatus.RUNNING.value, progress)
+                    )
+                
+                # Simulate discovering sources
+                if iteration_count % 3 == 0:  # Every 3rd iteration
+                    source_url = f"https://example.com/source-{iteration_count}"
+                    source_title = f"Source {iteration_count}"
+                    source_snippet = f"Relevant information for: {query}"
+                    
+                    # Persist source to database
+                    await add_source(job_id, source_url, source_title, source_snippet)
+                    
+                    # Broadcast source
+                    if connection_manager:
+                        source_data = {
+                            "url": source_url,
+                            "title": source_title,
+                            "snippet": source_snippet,
+                            "fetched_at": None
+                        }
+                        asyncio.create_task(
+                            connection_manager.broadcast_source(job_id, source_data)
+                        )
+                
+                # Simulate delay between iterations
+                await asyncio.sleep(0.1)
+            
+            # Synthesize results
+            sources = []  # TODO: Collect actual sources from database
+            report = await self.synthesize_results(job_id, sources)
+            
+            # Persist report to database
+            await update_job_report(job_id, report)
+            
+            # Broadcast final report
+            if connection_manager:
+                asyncio.create_task(
+                    connection_manager.broadcast_report(job_id, report)
+                )
+            
+            # Update status to COMPLETED in database
+            await db_update_job_status(job_id, "completed", 100.0)
+            
+            # Broadcast completion status
+            if connection_manager:
+                asyncio.create_task(
+                    connection_manager.broadcast_status(job_id, ResearchJobStatus.COMPLETED.value, 100.0)
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in research loop for job {job_id}: {e}", exc_info=True)
+            
+            # Update status to FAILED in database
+            await db_update_job_status(job_id, "failed", None)
+            
+            # Broadcast error
+            if connection_manager:
+                asyncio.create_task(
+                    connection_manager.broadcast_error(job_id, str(e))
+                )
+                asyncio.create_task(
+                    connection_manager.broadcast_status(job_id, ResearchJobStatus.FAILED.value, None)
+                )
     
     async def execute_research_step(
         self,
@@ -641,8 +1459,15 @@ class ResearchEngine:
         # TODO: Execute tool with parameters
         # TODO: Return results to agent for next step
         
-        logger.info(f"Executing research step for job {job_id}")
-        return {"status": "pending_implementation"}
+        from datetime import datetime
+        
+        logger.info(f"Executing research step {step.get('step', 'unknown')} for job {job_id}")
+        return {
+            "status": "completed",
+            "action": step.get("action", "research"),
+            "timestamp": datetime.utcnow().isoformat(),
+            "step": step.get("step")
+        }
     
     async def synthesize_results(
         self,
@@ -662,7 +1487,7 @@ class ResearchEngine:
         # TODO: Use Tongyi agent to synthesize all gathered information
         # TODO: Structure findings into organized report
         # TODO: Include source citations
-        # TODO: Save final report to database
+        # Note: Report is saved to database in _run_research_loop after this function returns
         
         logger.info(f"Synthesizing results for job {job_id}")
         return "Research synthesis pending implementation"
@@ -671,7 +1496,8 @@ class ResearchEngine:
         self,
         job_id: str,
         status: ResearchJobStatus,
-        progress: Optional[float] = None
+        progress: Optional[float] = None,
+        connection_manager: Optional["ConnectionManager"] = None
     ) -> None:
         """
         Update research job status.
@@ -680,11 +1506,18 @@ class ResearchEngine:
             job_id: The research job ID
             status: New status
             progress: Optional progress percentage (0-100)
+            connection_manager: Optional WebSocket connection manager for real-time updates
         """
-        # TODO: Update job status in database
-        # TODO: Emit WebSocket event for real-time updates
+        # Update job status in database
+        await db_update_job_status(job_id, status.value, progress)
         
         logger.info(f"Updating job {job_id} status to {status}")
+        
+        # Broadcast status update via WebSocket
+        if connection_manager:
+            asyncio.create_task(
+                connection_manager.broadcast_status(job_id, status.value, progress)
+            )
 </file>
 
 <file path="backend/app/orchestrator/tongyi_client.py">
@@ -930,6 +1763,7 @@ Jina Reader API wrapper for fetching and parsing web content.
 """
 import logging
 import httpx
+import re
 from typing import Dict, Any, Optional
 from app.config import settings
 
@@ -940,11 +1774,8 @@ class WebFetchTool:
     """
     Tool for fetching and parsing web content using Jina Reader API.
     
-    TODO: Implement full Jina Reader integration:
-    1. Fetch article/content from URL
-    2. Parse and extract main content
-    3. Handle different content types
-    4. Extract metadata (title, author, date, etc.)
+    Provides async web content fetching functionality with proper error handling,
+    response parsing, and logging.
     """
     
     def __init__(self):
@@ -953,10 +1784,42 @@ class WebFetchTool:
         self.base_url = "https://r.jina.ai"
         self.client = httpx.AsyncClient(
             headers={
-                "X-RapidAPI-Key": self.api_key,
+                "Authorization": f"Bearer {self.api_key}",
             },
             timeout=60.0,
         )
+    
+    def _truncate_content(self, content: str, max_words: int = 10000) -> str:
+        """
+        Truncate content to a maximum number of words, preserving word boundaries.
+        
+        Args:
+            content: The content to truncate
+            max_words: Maximum number of words to keep
+            
+        Returns:
+            Truncated content string
+        """
+        words = content.split()
+        if len(words) <= max_words:
+            return content
+        return " ".join(words[:max_words])
+    
+    def _extract_title_from_markdown(self, markdown_content: str) -> str:
+        """
+        Extract title from markdown content (first heading).
+        
+        Args:
+            markdown_content: Markdown content string
+            
+        Returns:
+            Extracted title or empty string
+        """
+        # Try to find first heading (# Title or ## Title)
+        heading_match = re.search(r'^#+\s+(.+)$', markdown_content, re.MULTILINE)
+        if heading_match:
+            return heading_match.group(1).strip()
+        return ""
     
     async def fetch(
         self,
@@ -964,46 +1827,77 @@ class WebFetchTool:
         mode: str = "reader"
     ) -> Dict[str, Any]:
         """
-        Fetch and parse content from a URL.
+        Fetch and parse content from a URL using Jina Reader API.
         
         Args:
-            url: The URL to fetch
-            mode: Reader mode (reader, raw, etc.)
+            url: The URL to fetch (e.g., https://example.com)
+            mode: Reader mode (reader, raw, etc.) - currently only "reader" is supported
             
         Returns:
-            Dictionary with parsed content, title, metadata, etc.
+            Dictionary with url, title, content, word_count on success.
+            Dictionary with "error" key on failure.
         """
-        # TODO: Implement actual Jina Reader API call
-        # TODO: Parse response and extract content
-        # TODO: Handle different modes and options
-        # TODO: Extract metadata fields
-        # TODO: Handle errors (404, timeout, etc.)
+        # Validate input
+        if not url or not url.strip():
+            logger.warning("Empty URL provided")
+            return {"error": "Empty URL provided"}
         
-        logger.info(f"Fetching content from: {url}")
+        # Ensure URL is properly formatted
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            url = f"https://{url}"
         
-        headers = {
-            "X-RapidAPI-Key": self.api_key,
-        }
+        # Construct Jina API URL
+        jina_url = f"{self.base_url}/{url}"
         
-        if mode == "reader":
-            headers["X-Return-Format"] = "json"
+        logger.info(f"Fetching content from Jina Reader API: {url}")
         
         try:
-            response = await self.client.get(url, headers=headers)
+            response = await self.client.get(jina_url)
             response.raise_for_status()
             
-            # TODO: Parse response based on format
-            if mode == "reader":
-                return response.json()
-            else:
-                return {
-                    "url": url,
-                    "content": response.text,
-                    "status_code": response.status_code,
-                }
-        except httpx.HTTPError as e:
-            logger.error(f"Jina Reader API error: {e}")
-            raise
+            # Jina Reader returns markdown/text content
+            content = response.text
+            
+            # Extract title from markdown (first heading)
+            title = self._extract_title_from_markdown(content)
+            if not title:
+                # Fallback: use URL domain or last part as title
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    title = parsed.netloc or parsed.path.split("/")[-1] or url
+                except Exception:
+                    title = url
+            
+            # Truncate content to max 10,000 words
+            truncated_content = self._truncate_content(content, max_words=10000)
+            
+            # Calculate word count (on truncated content if it was truncated)
+            word_count = len(truncated_content.split())
+            
+            result = {
+                "url": url,
+                "title": title,
+                "content": truncated_content,
+                "word_count": word_count,
+            }
+            
+            logger.info(f"Successfully fetched content from {url}: {word_count} words")
+            return result
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Jina Reader API HTTP error: {e.response.status_code} - {e.response.text}")
+            return {"error": f"HTTP error {e.response.status_code}: Failed to fetch content"}
+        except httpx.RequestError as e:
+            logger.error(f"Jina Reader API request error: {e}")
+            return {"error": f"Request error: Failed to fetch content"}
+        except httpx.TimeoutException as e:
+            logger.error(f"Jina Reader API timeout error: {e}")
+            return {"error": "Request timeout: Failed to fetch content within 60 seconds"}
+        except Exception as e:
+            logger.error(f"Jina Reader API unexpected error: {e}", exc_info=True)
+            return {"error": f"Unexpected error: {str(e)}"}
     
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -1026,11 +1920,8 @@ class WebSearchTool:
     """
     Tool for performing web searches using Brave Search API.
     
-    TODO: Implement full Brave Search integration:
-    1. Search with query string
-    2. Parse and format search results
-    3. Handle pagination
-    4. Filter and rank results
+    Provides async web search functionality with proper error handling,
+    response parsing, and logging.
     """
     
     def __init__(self):
@@ -1061,33 +1952,63 @@ class WebSearchTool:
             safesearch: Safe search setting (off, moderate, strict)
             
         Returns:
-            List of search result dictionaries with title, url, snippet, etc.
+            List of search result dictionaries with title, url, snippet.
+            Returns empty list on error.
         """
-        # TODO: Implement actual Brave Search API call
-        # TODO: Parse response and extract relevant fields
-        # TODO: Format results consistently
-        # TODO: Handle API errors and rate limits
+        # Validate input
+        if not query or not query.strip():
+            logger.warning("Empty search query provided")
+            return []
         
-        logger.info(f"Searching for: {query}")
+        # Limit count to max 10 per requirements
+        count = min(count, 10)
+        
+        logger.info(f"Searching Brave Search API for: {query} (count={count})")
         
         params = {
             "q": query,
-            "count": min(count, 20),
+            "count": min(count, 20),  # Brave API supports up to 20, but we cap at 10
             "offset": offset,
             "safesearch": safesearch,
         }
         
+        url = f"{self.base_url}/web/search"
+        
         try:
-            response = await self.client.get("/web/search", params=params)
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             
-            # TODO: Parse and format results
-            results = data.get("web", {}).get("results", [])
+            # Parse and format results
+            raw_results = data.get("web", {}).get("results", [])
+            
+            # Extract and format results
+            results = []
+            for item in raw_results[:count]:
+                result = {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("description", ""),
+                }
+                # Only add result if it has required fields
+                if result["title"] and result["url"]:
+                    results.append(result)
+            
+            logger.info(f"Brave Search API returned {len(results)} results for query: {query}")
             return results
-        except httpx.HTTPError as e:
-            logger.error(f"Brave Search API error: {e}")
-            raise
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Brave Search API HTTP error: {e.response.status_code} - {e.response.text}")
+            return []
+        except httpx.RequestError as e:
+            logger.error(f"Brave Search API request error: {e}")
+            return []
+        except httpx.TimeoutException as e:
+            logger.error(f"Brave Search API timeout error: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Brave Search API unexpected error: {e}", exc_info=True)
+            return []
     
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -2066,6 +2987,63 @@ ALTER TABLE research_sources ENABLE ROW LEVEL SECURITY;
 -- CREATE POLICY "Users can update their own research jobs"
 --     ON research_jobs FOR UPDATE
 --     USING (auth.uid() = user_id);
+</file>
+
+<file path="backend/app/config.py">
+"""
+Configuration management using environment variables.
+"""
+import os
+from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+class Settings:
+    """Application settings loaded from environment variables."""
+    
+    # API Keys
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    BRAVE_SEARCH_API_KEY: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    JINA_READER_API_KEY: str = os.getenv("JINA_READER_API_KEY", "")
+    
+    # Supabase
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
+    
+    # OpenRouter Configuration
+    OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    TONGYI_MODEL: str = os.getenv("TONGYI_MODEL", "alibaba/tongyi-deepresearch-30b-a3b")
+    
+    # Server Configuration
+    BACKEND_HOST: str = os.getenv("BACKEND_HOST", "0.0.0.0")
+    BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
+    
+    # CORS
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    
+    # Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    
+    @classmethod
+    def validate(cls) -> None:
+        """Validate that required environment variables are set."""
+        required_vars = [
+            "OPENROUTER_API_KEY",
+            "BRAVE_SEARCH_API_KEY",
+            "JINA_READER_API_KEY",
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+        ]
+        missing = [var for var in required_vars if not getattr(cls, var)]
+        if missing:
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+
+# Global settings instance
+settings = Settings()
 </file>
 
 </files>

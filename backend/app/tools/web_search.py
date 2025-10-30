@@ -13,11 +13,8 @@ class WebSearchTool:
     """
     Tool for performing web searches using Brave Search API.
     
-    TODO: Implement full Brave Search integration:
-    1. Search with query string
-    2. Parse and format search results
-    3. Handle pagination
-    4. Filter and rank results
+    Provides async web search functionality with proper error handling,
+    response parsing, and logging.
     """
     
     def __init__(self):
@@ -48,33 +45,63 @@ class WebSearchTool:
             safesearch: Safe search setting (off, moderate, strict)
             
         Returns:
-            List of search result dictionaries with title, url, snippet, etc.
+            List of search result dictionaries with title, url, snippet.
+            Returns empty list on error.
         """
-        # TODO: Implement actual Brave Search API call
-        # TODO: Parse response and extract relevant fields
-        # TODO: Format results consistently
-        # TODO: Handle API errors and rate limits
+        # Validate input
+        if not query or not query.strip():
+            logger.warning("Empty search query provided")
+            return []
         
-        logger.info(f"Searching for: {query}")
+        # Limit count to max 10 per requirements
+        count = min(count, 10)
+        
+        logger.info(f"Searching Brave Search API for: {query} (count={count})")
         
         params = {
             "q": query,
-            "count": min(count, 20),
+            "count": min(count, 20),  # Brave API supports up to 20, but we cap at 10
             "offset": offset,
             "safesearch": safesearch,
         }
         
+        url = f"{self.base_url}/web/search"
+        
         try:
-            response = await self.client.get("/web/search", params=params)
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             
-            # TODO: Parse and format results
-            results = data.get("web", {}).get("results", [])
+            # Parse and format results
+            raw_results = data.get("web", {}).get("results", [])
+            
+            # Extract and format results
+            results = []
+            for item in raw_results[:count]:
+                result = {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("description", ""),
+                }
+                # Only add result if it has required fields
+                if result["title"] and result["url"]:
+                    results.append(result)
+            
+            logger.info(f"Brave Search API returned {len(results)} results for query: {query}")
             return results
-        except httpx.HTTPError as e:
-            logger.error(f"Brave Search API error: {e}")
-            raise
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Brave Search API HTTP error: {e.response.status_code} - {e.response.text}")
+            return []
+        except httpx.RequestError as e:
+            logger.error(f"Brave Search API request error: {e}")
+            return []
+        except httpx.TimeoutException as e:
+            logger.error(f"Brave Search API timeout error: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Brave Search API unexpected error: {e}", exc_info=True)
+            return []
     
     async def close(self) -> None:
         """Close the HTTP client."""
